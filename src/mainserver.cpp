@@ -312,8 +312,8 @@ void handleSettings() { server.send(200, "text/html", settingsPage()); }
 
 void handleConnect()
 {
-  wifi_ssid = server.arg("ssid");
-  wifi_password = server.arg("pass");
+  WIFI_SSID = server.arg("ssid");
+  WIFI_PASS = server.arg("pass");
   server.send(200, "text/plain", "Connecting....");
   isAPMode = false;
   connecting = true;
@@ -335,7 +335,7 @@ void setupServer()
 void startAP()
 {
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid.c_str(), password.c_str());
+  WiFi.softAP(String(SSID_AP), String(PASS_AP));
   Serial.print("AP IP address: ");
   Serial.println(WiFi.softAPIP());
   isAPMode = true;
@@ -345,19 +345,19 @@ void startAP()
 void connectToWiFi()
 {
   WiFi.mode(WIFI_STA);
-  if (wifi_password.isEmpty())
+  if (WIFI_PASS.isEmpty())
   {
-    WiFi.begin(wifi_ssid.c_str());
+    WiFi.begin(WIFI_SSID.c_str());
   }
   else
   {
-    WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
+    WiFi.begin(WIFI_SSID.c_str(), WIFI_PASS.c_str());
   }
   Serial.print("Connecting to: ");
-  Serial.print(wifi_ssid.c_str());
+  Serial.print(WIFI_SSID.c_str());
 
   Serial.print(" Password: ");
-  Serial.print(wifi_password.c_str());
+  Serial.print(WIFI_PASS.c_str());
 }
 
 // ========== Main task ==========
