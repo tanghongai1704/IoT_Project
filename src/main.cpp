@@ -11,8 +11,8 @@
 #include "task_check_info.h"
 #include "task_toogle_boot.h"
 #include "task_wifi.h"
-#include "task_webserver.h"
-#include "task_core_iot.h"
+// #include "task_webserver.h"
+// #include "task_core_iot.h"
 
 void setup()
 {
@@ -34,12 +34,12 @@ void loop()
   {
     if (!Wifi_reconnect())
     {
-      Webserver_stop();
+      // Webserver_stop();
     }
     else
     {
       // CORE_IOT_reconnect();
     }
   }
-  Webserver_reconnect();
+  // Webserver_reconnect();
 }

@@ -34,8 +34,7 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
 
         if (info->opcode == WS_TEXT)
         {
-            String message;
-            message += String((char *)data).substring(0, len);
+            String message = String((char *)data).substring(0, len);
             // parseJson(message, true);
             handleWebSocketMessage(message);
         }
