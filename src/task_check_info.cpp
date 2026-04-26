@@ -69,7 +69,7 @@ bool check_info_File(bool check)
     }
     Load_info_File();
   }
-  
+
   if (WIFI_SSID.isEmpty() && WIFI_PASS.isEmpty())
   {
     if (!check)

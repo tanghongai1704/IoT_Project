@@ -30,7 +30,7 @@ void startSTA()
     {
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
-    //Give a semaphore here
+    // Give a semaphore here
     xSemaphoreGive(xBinarySemaphoreInternet);
 }
 
