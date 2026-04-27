@@ -15,6 +15,7 @@ void Task_Toogle_BOOT(void *pvParameters)
             }
             else if (millis() - buttonPressStartTime > 2000)
             {
+                Serial.println("Button pressed for 2 seconds. Deleting info file and restarting...");
                 Delete_info_File();
                 vTaskDelete(NULL);
             }

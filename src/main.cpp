@@ -18,14 +18,13 @@ void setup()
 {
   Serial.begin(115200);
   check_info_File(0);
-
-  // xTaskCreate(led_blinky, "Task LED Blink", 2048, NULL, 2, NULL);
-  // xTaskCreate(neo_blinky, "Task NEO Blink", 2048, NULL, 2, NULL);
+  xTaskCreate(led_blinky, "Task LED Blink", 2048, NULL, 2, NULL);
+  xTaskCreate(neo_blinky, "Task NEO Blink", 2048, NULL, 2, NULL);
   xTaskCreate(temp_humi_monitor, "Task TEMP HUMI Monitor", 2048, NULL, 2, NULL);
   xTaskCreate(webserver_task, "WebServer Task", 8192, NULL, 2, NULL);
   // xTaskCreate(tiny_ml_task, "Tiny ML Task", 2048, NULL, 2, NULL);
-  xTaskCreate(coreiot_task, "CoreIOT Task", 4096, NULL, 2, NULL);
-  // xTaskCreate(Task_Toogle_BOOT, "Task_Toogle_BOOT", 4096, NULL, 2, NULL);
+  // xTaskCreate(coreiot_task, "CoreIOT Task", 4096, NULL, 2, NULL);
+  xTaskCreate(Task_Toogle_BOOT, "Task_Toogle_BOOT", 4096, NULL, 2, NULL);
 }
 
 void loop()
@@ -34,6 +33,7 @@ void loop()
 
   if (check_info_File(1) && !wifiStarted)
   {
+    Serial.println("Starting WiFi...");
     startSTA();
     wifiStarted = true;
   }
@@ -41,6 +41,7 @@ void loop()
   // nếu mất mạng thì mới reconnect
   if (wifiStarted && WiFi.status() != WL_CONNECTED)
   {
+    Serial.println("Reconnecting WiFi...");
     Wifi_reconnect();
   }
 

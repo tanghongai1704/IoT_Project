@@ -20,6 +20,12 @@ void Load_info_File()
     CORE_IOT_TOKEN = strdup(doc["CORE_IOT_TOKEN"]);
     CORE_IOT_SERVER = strdup(doc["CORE_IOT_SERVER"]);
     CORE_IOT_PORT = strdup(doc["CORE_IOT_PORT"]);
+    Serial.println("✅ Info loaded from file:");
+    Serial.println(WIFI_SSID);
+    Serial.println(WIFI_PASS);
+    Serial.println(CORE_IOT_TOKEN);
+    Serial.println(CORE_IOT_SERVER);
+    Serial.println(CORE_IOT_PORT);
   }
   file.close();
 }

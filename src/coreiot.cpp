@@ -97,7 +97,7 @@ void setup_coreiot()
 
     while (1)
     {
-        if (xSemaphoreTake(xBinarySemaphoreInternet, portMAX_DELAY))
+        if (xSemaphoreTake(xBinarySemaphoreInternet, pdMS_TO_TICKS(5000)))
         {
             break;
         }

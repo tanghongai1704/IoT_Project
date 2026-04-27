@@ -8,7 +8,7 @@ void Webserver_sendata(const String &data)
     if (ws.count() > 0)
     {
         ws.textAll(data); // Gửi đến tất cả client đang kết nối
-        Serial.println("📤 Đã gửi dữ liệu qua WebSocket: " + data);
+        // Serial.println("📤 Đã gửi dữ liệu qua WebSocket: " + data);
     }
     else
     {
