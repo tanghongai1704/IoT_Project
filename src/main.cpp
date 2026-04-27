@@ -12,7 +12,7 @@
 #include "task_toogle_boot.h"
 #include "task_wifi.h"
 #include "task_webserver.h"
-#include "task_core_iot.h"
+// #include "task_core_iot.h"
 
 void setup()
 {
@@ -25,25 +25,10 @@ void setup()
   // xTaskCreate(tiny_ml_task, "Tiny ML Task", 2048, NULL, 2, NULL);
   // xTaskCreate(coreiot_task, "CoreIOT Task", 4096, NULL, 2, NULL);
   xTaskCreate(Task_Toogle_BOOT, "Task_Toogle_BOOT", 4096, NULL, 2, NULL);
+  xTaskCreate(wifi_task, "WiFi Task", 4096, NULL, 3, NULL);
 }
 
 void loop()
 {
-  static bool wifiStarted = false;
-
-  if (check_info_File(1) && !wifiStarted)
-  {
-    Serial.println("Starting WiFi...");
-    startSTA();
-    wifiStarted = true;
-  }
-
-  // nếu mất mạng thì mới reconnect
-  if (wifiStarted && WiFi.status() != WL_CONNECTED)
-  {
-    Serial.println("Reconnecting WiFi...");
-    Wifi_reconnect();
-  }
-
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 }

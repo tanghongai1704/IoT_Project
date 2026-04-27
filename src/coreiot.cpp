@@ -27,7 +27,7 @@ void reconnect()
             Serial.print("failed, rc=");
             Serial.print(client.state());
             Serial.println(" try again in 5 seconds");
-            delay(5000);
+            vTaskDelay(pdMS_TO_TICKS(5000));
         }
     }
 }
@@ -97,7 +97,7 @@ void setup_coreiot()
 
     while (1)
     {
-        if (xSemaphoreTake(xBinarySemaphoreInternet, pdMS_TO_TICKS(5000)))
+        if (xSemaphoreTake(xBinarySemaphoreInternet, portMAX_DELAY))
         {
             break;
         }
