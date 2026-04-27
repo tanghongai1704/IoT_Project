@@ -1,5 +1,6 @@
 #include "task_webserver.h"
 #include <WiFi.h>
+#include <WiFi.h>
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
@@ -15,6 +16,17 @@ void Webserver_sendata(const String &data)
     {
         Serial.println("⚠️ Không có client WebSocket nào đang kết nối!");
     }
+}
+
+void Webserver_stop()
+{
+    Serial.println("Stopping WebServer...");
+
+    ws.closeAll();
+    ws.cleanupClients();
+
+    // AsyncWebServer has no end(), reset handlers to stop safely before WiFi mode switch.
+    server.reset();
 }
 
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len)
@@ -74,19 +86,36 @@ void sendSensorData()
 
 void webserver_task(void *pvParameters)
 {
-    webserver_init(); // chạy 1 lần duy nhất
+    bool serverStarted = false;
 
     unsigned long lastSend = 0;
 
     while (1)
     {
-        ws.cleanupClients();
-        ElegantOTA.loop();
-
-        if (millis() - lastSend > 2000)
+        if (!serverStarted &&
+            (WiFi.getMode() == WIFI_AP))
         {
-            sendSensorData();
-            lastSend = millis();
+            Serial.println("Starting WebServer...");
+            webserver_init();
+            serverStarted = true;
+        }
+
+        if (serverStarted && WiFi.getMode() == WIFI_MODE_NULL)
+        {
+            Webserver_stop();
+            serverStarted = false;
+        }
+
+        if (serverStarted)
+        {
+            ws.cleanupClients();
+            ElegantOTA.loop();
+
+            if (millis() - lastSend > 2000)
+            {
+                sendSensorData();
+                lastSend = millis();
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(100));

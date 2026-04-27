@@ -1,12 +1,10 @@
 #include "task_wifi.h"
 #include <WiFi.h>
 
-// ================= GLOBAL GUARD =================
-volatile bool wifiSwitching = false;
-
 // ================= AP MODE =================
 void startAP()
 {
+    WiFi.mode(WIFI_AP);
     WiFi.softAP(String(SSID_AP), String(PASS_AP));
 
     Serial.print("📡 AP IP: ");
@@ -24,103 +22,64 @@ void startSTA()
 
     Serial.println("[WiFi] Connecting...");
 
-    WiFi.begin(WIFI_SSID.c_str(), WIFI_PASS.c_str());
+    WiFi.mode(WIFI_STA);
 
-    int retry = 0;
-    while (WiFi.status() != WL_CONNECTED && retry < 20)
-    {
-        delay(500);
-        Serial.print(".");
-        retry++;
-    }
-
-    Serial.println();
-
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        Serial.println("✅ STA Connected");
-        Serial.println(WiFi.localIP());
-    }
+    if (WIFI_PASS.isEmpty())
+        WiFi.begin(WIFI_SSID.c_str());
     else
-    {
-        Serial.println("❌ STA Failed");
-    }
+        WiFi.begin(WIFI_SSID.c_str(), WIFI_PASS.c_str());
 }
 
 // ================= WIFI TASK =================
 void wifi_task(void *pvParameters)
 {
-    static bool lastHasConfig = false;
-
-    static bool staStarted = false;
-    static bool apStarted = false;
-
+    static bool isAP = false;
+    static bool isSTA = false;
     static bool internetNotified = false;
 
     while (1)
     {
-        bool hasConfig = !check_info_File(1);
+        bool hasConfig = check_info_File(1);
 
-        // ================= DETECT CHANGE =================
-        if (hasConfig != lastHasConfig)
+        // ================= SWITCH TO STA =================
+        if (hasConfig && !isSTA)
         {
-            Serial.println("🔄 WIFI MODE SWITCH DETECTED");
+            Serial.println("🔄 Switching to STA mode");
 
-            wifiSwitching = true;
-
-            // 🛑 STOP NETWORK SAFE
-            vTaskDelay(pdMS_TO_TICKS(200));
-
+            Webserver_stop();
             WiFi.disconnect(true);
-            delay(300);
 
-            staStarted = false;
-            apStarted = false;
+            startSTA();
+
+            isSTA = true;
+            isAP = false;
             internetNotified = false;
-
-            wifiSwitching = false;
         }
 
-        lastHasConfig = hasConfig;
-
-        // ================= AP MODE =================
-        if (!hasConfig)
+        // ================= SWITCH TO AP =================
+        if (!hasConfig && !isAP)
         {
-            if (!apStarted)
-            {
-                Serial.println("📡 SWITCH TO AP MODE");
+            Serial.println("🔄 Switching to AP mode");
 
-                WiFi.mode(WIFI_AP);
-                startAP();
+            Webserver_stop();
+            WiFi.disconnect(true);
 
-                apStarted = true;
-                staStarted = false;
-            }
+            startAP();
+
+            isAP = true;
+            isSTA = false;
+            internetNotified = false;
         }
 
-        // ================= STA MODE =================
-        else
-        {
-            if (!staStarted)
-            {
-                Serial.println("🌐 SWITCH TO STA MODE");
-
-                WiFi.mode(WIFI_AP_STA);
-                startSTA();
-
-                staStarted = true;
-                apStarted = false;
-            }
-        }
-
-        // ================= INTERNET READY =================
-        if (!wifiSwitching && staStarted && WiFi.status() == WL_CONNECTED)
+        if (isSTA && WiFi.status() == WL_CONNECTED)
         {
             if (!internetNotified)
             {
                 Serial.println("🌍 INTERNET READY");
                 xSemaphoreGive(xBinarySemaphoreInternet);
                 internetNotified = true;
+                Serial.print("STA IP: ");
+                Serial.println(WiFi.localIP());
             }
         }
 
@@ -129,6 +88,6 @@ void wifi_task(void *pvParameters)
             internetNotified = false;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }

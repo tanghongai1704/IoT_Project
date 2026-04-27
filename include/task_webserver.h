@@ -14,6 +14,7 @@ extern AsyncWebSocket ws;
 
 void webserver_init();
 void webserver_task(void *pvParameters);
+void Webserver_stop();
 
 void Webserver_sendata(const String &data);
 
