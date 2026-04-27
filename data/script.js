@@ -14,8 +14,8 @@ let gaugeHumi;
 window.addEventListener('load', onLoad);
 
 function onLoad() {
-    initWebSocket();
-    initGauges();
+    initGauges();     // 🔥 tạo UI trước
+    initWebSocket();  // 🔥 rồi mới connect
 }
 
 // ==================== WEBSOCKET ====================
