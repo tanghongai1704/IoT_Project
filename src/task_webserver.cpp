@@ -3,7 +3,7 @@
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
-void Webserver_sendata(String data)
+void Webserver_sendata(const String &data)
 {
     if (ws.count() > 0)
     {
@@ -59,14 +59,36 @@ void webserver_init()
     Serial.println("WebServer started");
 }
 
+// ==================== SEND SENSOR REALTIME ====================
+void sendSensorData()
+{
+    float temp = random(250, 350) / 10.0;
+    float humi = random(400, 800) / 10.0;
+
+    String json = "{\"page\":\"home\",\"value\":{\"temp\":" +
+                  String(temp) + ",\"humi\":" + String(humi) + "}}";
+
+    Webserver_sendata(json);
+}
+
+// ==================== TASK ====================
 void webserver_task(void *pvParameters)
 {
     webserver_init();
 
+    unsigned long lastSend = 0;
+
     while (1)
     {
         ws.cleanupClients();
-        ElegantOTA.loop(); // OTA background
+        ElegantOTA.loop();
+
+        // gửi sensor mỗi 2s
+        if (millis() - lastSend > 2000)
+        {
+            sendSensorData();
+            lastSend = millis();
+        }
 
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
