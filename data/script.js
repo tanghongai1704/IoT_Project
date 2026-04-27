@@ -71,31 +71,94 @@ function onMessage(event) {
 
 // ==================== GAUGES ====================
 function initGauges() {
-    gaugeTemp = new JustGage({
-        id: "gauge_temp",
-        value: 0,
+    gaugeTemp = createGauge("gauge_temp", {
+        label: "Nhiệt độ",
+        unit: "°C",
         min: -10,
         max: 50,
-        donut: true,
-        pointer: false,
-        gaugeWidthScale: 0.25,
-        gaugeColor: "transparent",
-        levelColorsGradient: true,
-        levelColors: ["#00BCD4", "#4CAF50", "#FFC107", "#F44336"]
+        colors: ["#00BCD4", "#4CAF50", "#FFC107", "#F44336"]
     });
 
-    gaugeHumi = new JustGage({
-        id: "gauge_humi",
-        value: 0,
+    gaugeHumi = createGauge("gauge_humi", {
+        label: "Độ ẩm",
+        unit: "%",
         min: 0,
         max: 100,
-        donut: true,
-        pointer: false,
-        gaugeWidthScale: 0.25,
-        gaugeColor: "transparent",
-        levelColorsGradient: true,
-        levelColors: ["#42A5F5", "#00BCD4", "#0288D1"]
+        colors: ["#42A5F5", "#00BCD4", "#0288D1"]
     });
+}
+
+function createGauge(containerId, config) {
+    const container = document.getElementById(containerId);
+    const clampedMin = Number(config.min);
+    const clampedMax = Number(config.max);
+
+    container.innerHTML = `
+        <div class="gauge-shell">
+            <div class="gauge-ring">
+                <div class="gauge-center">
+                    <div class="gauge-value">0</div>
+                    <div class="gauge-unit"></div>
+                </div>
+            </div>
+            <div class="gauge-meta">
+                <span class="gauge-label"></span>
+                <span class="gauge-range"></span>
+            </div>
+        </div>
+    `;
+
+    const gaugeShell = container.querySelector('.gauge-shell');
+    const valueEl = container.querySelector('.gauge-value');
+    const unitEl = container.querySelector('.gauge-unit');
+    const labelEl = container.querySelector('.gauge-label');
+    const rangeEl = container.querySelector('.gauge-range');
+
+    unitEl.textContent = config.unit;
+    labelEl.textContent = config.label;
+    rangeEl.textContent = `${clampedMin} ${config.unit} - ${clampedMax} ${config.unit}`;
+
+    const update = (value) => {
+        const numericValue = Number.isFinite(value) ? value : 0;
+        const cappedValue = Math.min(Math.max(numericValue, clampedMin), clampedMax);
+        const percent = ((cappedValue - clampedMin) / (clampedMax - clampedMin)) * 100;
+        const color = pickGaugeColor(percent, config.colors);
+
+        gaugeShell.style.setProperty('--gauge-progress', `${percent}%`);
+        gaugeShell.style.setProperty('--gauge-accent', color);
+        valueEl.textContent = Number.isInteger(cappedValue) ? cappedValue.toString() : cappedValue.toFixed(1);
+    };
+
+    update(0);
+
+    return {
+        refresh: update
+    };
+}
+
+function pickGaugeColor(percent, colors) {
+    if (!colors || colors.length === 0) {
+        return '#2294F2';
+    }
+
+    if (colors.length === 1) {
+        return colors[0];
+    }
+
+    if (colors.length === 2) {
+        return percent < 50 ? colors[0] : colors[1];
+    }
+
+    if (colors.length === 3) {
+        if (percent < 34) return colors[0];
+        if (percent < 67) return colors[1];
+        return colors[2];
+    }
+
+    if (percent < 25) return colors[0];
+    if (percent < 50) return colors[1];
+    if (percent < 75) return colors[2];
+    return colors[3];
 }
 
 // ==================== UI NAVIGATION ====================
@@ -145,7 +208,7 @@ function renderRelays() {
         card.className = 'device-card';
 
         card.innerHTML = `
-            <i class="fa-solid fa-bolt device-icon"></i>
+            <div class="device-icon">🔌</div>
             <h3>${r.name}</h3>
             <p>GPIO: ${r.gpio}</p>
 
@@ -154,8 +217,8 @@ function renderRelays() {
                 ${r.state ? 'ON' : 'OFF'}
             </button>
 
-            <i class="fa-solid fa-trash delete-icon" 
-                onclick="showDeleteDialog(${r.id})"></i>
+            <button class="delete-icon" 
+                onclick="showDeleteDialog(${r.id})" aria-label="Xóa relay">🗑</button>
         `;
 
         container.appendChild(card);
