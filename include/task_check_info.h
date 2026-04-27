@@ -4,8 +4,6 @@
 #include <ArduinoJson.h>
 #include "LittleFS.h"
 #include "global.h"
-#include "task_wifi.h"
-
 
 bool check_info_File(bool check);
 void Load_info_File();

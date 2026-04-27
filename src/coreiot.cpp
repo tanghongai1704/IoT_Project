@@ -1,11 +1,5 @@
 #include "coreiot.h"
 
-// ----------- CONFIGURE THESE! -----------
-const char *coreIOT_Server = "app.coreiot.io";
-const char *coreIOT_Token = "g7drm1amhd3dchr379xu"; // Device Access Token
-const int mqttPort = 1883;
-// ----------------------------------------
-
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -16,6 +10,8 @@ void reconnect()
     {
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect (username=token, password=empty)
+        Serial.print("Connecting to CoreIOT Server... with token: ");
+        Serial.println(CORE_IOT_TOKEN);
         if (client.connect("ESP32Client", CORE_IOT_TOKEN.c_str(), NULL))
         {
             Serial.println("connected to CoreIOT Server!");
@@ -99,10 +95,11 @@ void setup_coreiot()
     {
         if (xSemaphoreTake(xBinarySemaphoreInternet, portMAX_DELAY))
         {
+            Serial.println("✅ Internet access granted to CoreIOT Task.");
             break;
         }
         delay(500);
-        Serial.print(".");
+        Serial.print(".........................");
     }
 
     Serial.println("Connected to WiFi! Now connecting to CoreIOT Server...");
@@ -113,7 +110,9 @@ void setup_coreiot()
 
 void coreiot_task(void *pvParameters)
 {
-
+    CORE_IOT_TOKEN = "8q65jhepep1xwr9jldpw";
+    CORE_IOT_SERVER = "app.coreiot.io";
+    CORE_IOT_PORT = "1883";
     setup_coreiot();
 
     while (1)

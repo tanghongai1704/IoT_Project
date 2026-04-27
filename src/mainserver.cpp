@@ -1,4 +1,5 @@
 #include "mainserver.h"
+#include "task_check_info.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -13,12 +14,12 @@ bool connecting = false;
 
 String mainPage()
 {
-    float temperature = glob_temperature;
-    float humidity = glob_humidity;
-    String led1 = led1_state ? "ON" : "OFF";
-    String led2 = led2_state ? "ON" : "OFF";
+  float temperature = glob_temperature;
+  float humidity = glob_humidity;
+  String led1 = led1_state ? "ON" : "OFF";
+  String led2 = led2_state ? "ON" : "OFF";
 
-    return R"rawliteral(
+  return R"rawliteral(
   <!DOCTYPE html>
   <html lang="vi">
   <head>
@@ -112,18 +113,18 @@ String mainPage()
       <h1>📊 ESP32 Dashboard</h1>
       <div class="sensor">
         🌡️ Nhiệt độ: <span id="temp">)rawliteral" +
-           String(temperature) + R"rawliteral(</span> &deg;C
+         String(temperature) + R"rawliteral(</span> &deg;C
       </div>
       <div class="sensor">
         💧 Độ ẩm: <span id="hum">)rawliteral" +
-           String(humidity) + R"rawliteral(</span> %
+         String(humidity) + R"rawliteral(</span> %
       </div>
 
       <div>
         <button onclick='toggleLED(1)'>💡 LED1: <span id="l1">)rawliteral" +
-           led1 + R"rawliteral(</span></button>
+         led1 + R"rawliteral(</span></button>
         <button onclick='toggleLED(2)'>💡 LED2: <span id="l2">)rawliteral" +
-           led2 + R"rawliteral(</span></button>
+         led2 + R"rawliteral(</span></button>
       </div>
 
       <button id="settings" onclick="window.location='/settings'">⚙️ Cài đặt</button>
@@ -155,7 +156,7 @@ String mainPage()
 
 String settingsPage()
 {
-    return R"rawliteral(
+  return R"rawliteral(
   <!DOCTYPE html>
   <html lang="vi">
   <head>
@@ -255,8 +256,11 @@ String settingsPage()
       <h1>⚙️ Cấu hình Wi-Fi</h1>
       <form id="wifiForm">
         <input name="ssid" id="ssid" type="text" placeholder="Tên Wi-Fi (SSID)" required><br>
-        <input name="password" id="pass" type="password" placeholder="Mật khẩu (bỏ trống nếu không có)"><br><br>
-        <button type="submit">Kết nối</button>
+        <input name="password" id="pass" type="password" placeholder="Mật khẩu (bỏ trống nếu không có)"><br>
+        <input name="token" id="token" type="text" placeholder="Token CORE IOT" required><br>
+        <input name="server" id="server" type="text" placeholder="Server CORE IOT" required><br>
+        <input name="port" id="port" type="number" placeholder="Port CORE IOT" required><br><br>
+        <button type="submit">Lưu cấu hình</button>
         <button type="button" id="back" onclick="window.location='/'">Quay lại</button>
       </form>
       <div id="msg"></div>
@@ -267,7 +271,14 @@ String settingsPage()
         e.preventDefault();
         let ssid = document.getElementById('ssid').value;
         let pass = document.getElementById('pass').value;
-        fetch('/connect?ssid='+encodeURIComponent(ssid)+'&pass='+encodeURIComponent(pass))
+        let token = document.getElementById('token').value;
+        let server = document.getElementById('server').value;
+        let port = document.getElementById('port').value;
+        fetch('/connect?ssid='+encodeURIComponent(ssid)+
+              '&pass='+encodeURIComponent(pass)+
+              '&token='+encodeURIComponent(token)+
+              '&server='+encodeURIComponent(server)+
+              '&port='+encodeURIComponent(port))
           .then(r=>r.text())
           .then(msg=>{
             document.getElementById('msg').innerText = msg;
@@ -284,132 +295,140 @@ void handleRoot() { server.send(200, "text/html", mainPage()); }
 
 void handleToggle()
 {
-    int led = server.arg("led").toInt();
-    if (led == 1)
-    {
-        led1_state = !led1_state;
-        Serial.println("YOUR CODE TO CONTROL LED1");
-    }
-    else if (led == 2)
-    {
-        led2_state = !led2_state;
-        Serial.println("YOUR CODE TO CONTROL LED2");
-    }
-    server.send(200, "application/json",
-                "{\"led1\":\"" + String(led1_state ? "ON" : "OFF") +
-                    "\",\"led2\":\"" + String(led2_state ? "ON" : "OFF") + "\"}");
+  int led = server.arg("led").toInt();
+  if (led == 1)
+  {
+    led1_state = !led1_state;
+    Serial.println("YOUR CODE TO CONTROL LED1");
+  }
+  else if (led == 2)
+  {
+    led2_state = !led2_state;
+    Serial.println("YOUR CODE TO CONTROL LED2");
+  }
+  server.send(200, "application/json",
+              "{\"led1\":\"" + String(led1_state ? "ON" : "OFF") +
+                  "\",\"led2\":\"" + String(led2_state ? "ON" : "OFF") + "\"}");
 }
 
 void handleSensors()
 {
-    float t = glob_temperature;
-    float h = glob_humidity;
-    String json = "{\"temp\":" + String(t) + ",\"hum\":" + String(h) + "}";
-    server.send(200, "application/json", json);
+  float t = glob_temperature;
+  float h = glob_humidity;
+  String json = "{\"temp\":" + String(t) + ",\"hum\":" + String(h) + "}";
+  server.send(200, "application/json", json);
 }
 
 void handleSettings() { server.send(200, "text/html", settingsPage()); }
 
 void handleConnect()
 {
-    WIFI_SSID = server.arg("ssid");
-    WIFI_PASS = server.arg("pass");
-    server.send(200, "text/plain", "Connecting....");
-    isAPMode = false;
-    connecting = true;
-    connect_start_ms = millis();
-    connectToWiFi();
+  WIFI_SSID = server.arg("ssid");
+  WIFI_PASS = server.arg("pass");
+  CORE_IOT_TOKEN = server.arg("token");
+  CORE_IOT_SERVER = server.arg("server");
+  CORE_IOT_PORT = server.arg("port");
+
+  Save_info_File(WIFI_SSID, WIFI_PASS, CORE_IOT_TOKEN, CORE_IOT_SERVER, CORE_IOT_PORT);
+  Serial.println("Cấu hình đã lưu vào file. Đang kết nối Wi-Fi...");
+
+  server.send(200, "text/plain", "Cấu hình đã lưu. Thiết bị sẽ khởi động lại...");
+  isAPMode = false;
+  connecting = true;
+  connect_start_ms = millis();
+  connectToWiFi();
 }
 
 // ========== WiFi ==========
 void setupServer()
 {
-    server.on("/", HTTP_GET, handleRoot);
-    server.on("/toggle", HTTP_GET, handleToggle);
-    server.on("/sensors", HTTP_GET, handleSensors);
-    server.on("/settings", HTTP_GET, handleSettings);
-    server.on("/connect", HTTP_GET, handleConnect);
-    server.begin();
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/toggle", HTTP_GET, handleToggle);
+  server.on("/sensors", HTTP_GET, handleSensors);
+  server.on("/settings", HTTP_GET, handleSettings);
+  server.on("/connect", HTTP_GET, handleConnect);
+  server.begin();
 }
 
 void startAP()
 {
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(String(SSID_AP), String(PASS_AP));
-    Serial.print("AP IP address: ");
-    Serial.println(WiFi.softAPIP());
-    isAPMode = true;
-    connecting = false;
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(String(SSID_AP), String(PASS_AP));
+  Serial.print("AP IP address: ");
+  Serial.println(WiFi.softAPIP());
+  isAPMode = true;
+  connecting = false;
 }
 
 void connectToWiFi()
 {
-    WiFi.mode(WIFI_STA);
-    if (WIFI_PASS.isEmpty())
-    {
-        WiFi.begin(WIFI_SSID.c_str());
-    }
-    else
-    {
-        WiFi.begin(WIFI_SSID.c_str(), WIFI_PASS.c_str());
-    }
-    Serial.print("Connecting to: ");
-    Serial.print(WIFI_SSID.c_str());
+  WiFi.mode(WIFI_STA);
+  if (WIFI_PASS.isEmpty())
+  {
+    WiFi.begin(WIFI_SSID.c_str());
+  }
+  else
+  {
+    WiFi.begin(WIFI_SSID.c_str(), WIFI_PASS.c_str());
+  }
+  Serial.print("Connecting to: ");
+  Serial.print(WIFI_SSID.c_str());
 
-    Serial.print(" Password: ");
-    Serial.print(WIFI_PASS.c_str());
+  Serial.print(" Password: ");
+  Serial.print(WIFI_PASS.c_str());
 }
 
 // ========== Main task ==========
 void main_server_task(void *pvParameters)
 {
-    pinMode(BOOT_PIN, INPUT_PULLUP);
+  pinMode(BOOT_PIN, INPUT_PULLUP);
 
-    startAP();
-    setupServer();
+  startAP();
+  setupServer();
 
-    while (1)
+  while (1)
+  {
+    server.handleClient();
+
+    // BOOT Button to switch to AP Mode
+    if (digitalRead(BOOT_PIN) == LOW)
     {
-        server.handleClient();
-
-        // BOOT Button to switch to AP Mode
-        if (digitalRead(BOOT_PIN) == LOW)
+      vTaskDelay(100);
+      if (digitalRead(BOOT_PIN) == LOW)
+      {
+        if (!isAPMode)
         {
-            vTaskDelay(100);
-            if (digitalRead(BOOT_PIN) == LOW)
-            {
-                if (!isAPMode)
-                {
-                    startAP();
-                    setupServer();
-                }
-            }
+          startAP();
+          setupServer();
         }
-
-        // STA Mode
-        if (connecting)
-        {
-            if (WiFi.status() == WL_CONNECTED)
-            {
-                Serial.print("STA IP address: ");
-                Serial.println(WiFi.localIP());
-                isWifiConnected = true; // Internet access
-
-                xSemaphoreGive(xBinarySemaphoreInternet);
-
-                isAPMode = false;
-                connecting = false;
-            }
-            else if (millis() - connect_start_ms > 10000)
-            { // timeout 10s
-                Serial.println("WiFi connect failed! Back to AP.");
-                startAP();
-                setupServer();
-                connecting = false;
-                isWifiConnected = false;
-            }
-        }
-
-        vTaskDelay(20); // avoid watchdog reset
+      }
     }
+
+    // STA Mode
+    if (connecting)
+    {
+      if (WiFi.status() == WL_CONNECTED)
+      {
+        Serial.print("STA IP address: ");
+        Serial.println(WiFi.localIP());
+        isWifiConnected = true; // Internet access
+
+        xSemaphoreGive(xBinarySemaphoreInternet);
+        Serial.println("WiFi connected! Internet access granted.");
+
+        isAPMode = false;
+        connecting = false;
+      }
+      else if (millis() - connect_start_ms > 10000)
+      { // timeout 10s
+        Serial.println("WiFi connect failed! Back to AP.");
+        startAP();
+        setupServer();
+        connecting = false;
+        isWifiConnected = false;
+      }
+    }
+
+    vTaskDelay(20); // avoid watchdog reset
+  }
 }

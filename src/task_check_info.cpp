@@ -1,4 +1,5 @@
 #include "task_check_info.h"
+#include "mainserver.h"
 
 void Load_info_File()
 {
@@ -41,9 +42,6 @@ void Delete_info_File()
 
 void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT)
 {
-  Serial.println(wifi_ssid);
-  Serial.println(wifi_pass);
-
   DynamicJsonDocument doc(4096);
   doc["WIFI_SSID"] = wifi_ssid;
   doc["WIFI_PASS"] = wifi_pass;
@@ -61,7 +59,7 @@ void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, S
   {
     Serial.println('Unable to save the configuration.');
   }
-  ESP.restart();
+  // ESP.restart();
 };
 
 bool check_info_File(bool check)
