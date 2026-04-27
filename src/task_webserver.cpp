@@ -62,8 +62,8 @@ void webserver_init()
 // ==================== SEND SENSOR REALTIME ====================
 void sendSensorData()
 {
-    float temp = random(250, 350) / 10.0;
-    float humi = random(400, 800) / 10.0;
+    float temp = glob_temperature;
+    float humi = glob_humidity;
 
     String json = "{\"page\":\"home\",\"value\":{\"temp\":" +
                   String(temp) + ",\"humi\":" + String(humi) + "}}";
