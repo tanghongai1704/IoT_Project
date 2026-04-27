@@ -4,6 +4,7 @@ void startAP()
 {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(String(SSID_AP), String(PASS_AP));
+    sleep(10);
     Serial.print("AP IP: ");
     Serial.println(WiFi.softAPIP());
 }
