@@ -47,23 +47,25 @@ function onMessage(event) {
     try {
         const data = JSON.parse(event.data);
 
-        // ===== HOME SENSOR =====
         if (data.page === "home") {
-            if (data.value.temp !== undefined && gaugeTemp) {
-                gaugeTemp.refresh(data.value.temp);
-            }
-            if (data.value.humi !== undefined && gaugeHumi) {
-                gaugeHumi.refresh(data.value.humi);
-            }
-        }
 
-        // ===== DEVICE STATE (sync từ ESP) =====
-        if (data.page === "device") {
-            updateRelayFromESP(data.value);
+            // 🔥 CHẶN nếu gauge chưa sẵn sàng
+            if (!gaugeTemp || !gaugeHumi) {
+                console.warn("⚠️ Gauge chưa init!");
+                return;
+            }
+
+            if (data.value.temp !== undefined) {
+                gaugeTemp.refresh(Number(data.value.temp));
+            }
+
+            if (data.value.humi !== undefined) {
+                gaugeHumi.refresh(Number(data.value.humi));
+            }
         }
 
     } catch (e) {
-        console.warn("⚠️ JSON lỗi:", event.data);
+        console.warn("JSON lỗi:", event.data);
     }
 }
 

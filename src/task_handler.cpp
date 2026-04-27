@@ -35,6 +35,10 @@ void handleWebSocketMessage(String message)
             digitalWrite(gpio, LOW);
             Serial.printf("💤 GPIO %d OFF\n", gpio);
         }
+        String response = "{\"page\":\"device\",\"value\":{\"gpio\":" +
+                          String(gpio) + ",\"status\":\"" + status + "\"}}";
+
+        Webserver_sendata(response);
     }
     else if (doc["page"] == "setting")
     {
@@ -61,6 +65,6 @@ void handleWebSocketMessage(String message)
 
         // Phản hồi lại client (tùy chọn)
         String msg = "{\"status\":\"ok\",\"page\":\"setting_saved\"}";
-        ws.textAll(msg);
+        Webserver_sendata(msg);
     }
 }
