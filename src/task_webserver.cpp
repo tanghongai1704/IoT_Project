@@ -1,4 +1,5 @@
 #include "task_webserver.h"
+#include <WiFi.h>
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
@@ -71,10 +72,9 @@ void sendSensorData()
     Webserver_sendata(json);
 }
 
-// ==================== TASK ====================
 void webserver_task(void *pvParameters)
 {
-    webserver_init();
+    webserver_init(); // chạy 1 lần duy nhất
 
     unsigned long lastSend = 0;
 
@@ -83,13 +83,12 @@ void webserver_task(void *pvParameters)
         ws.cleanupClients();
         ElegantOTA.loop();
 
-        // gửi sensor mỗi 2s
         if (millis() - lastSend > 2000)
         {
             sendSensorData();
             lastSend = millis();
         }
 
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

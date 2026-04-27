@@ -105,7 +105,7 @@ void setup_coreiot()
         Serial.print(".");
     }
 
-    Serial.println(" Connected!");
+    Serial.println("Connected to WiFi! Now connecting to CoreIOT Server...");
 
     client.setServer(CORE_IOT_SERVER.c_str(), CORE_IOT_PORT.toInt());
     client.setCallback(callback);
