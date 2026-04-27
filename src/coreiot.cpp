@@ -110,9 +110,6 @@ void setup_coreiot()
 
 void coreiot_task(void *pvParameters)
 {
-    CORE_IOT_TOKEN = "8q65jhepep1xwr9jldpw";
-    CORE_IOT_SERVER = "app.coreiot.io";
-    CORE_IOT_PORT = "1883";
     setup_coreiot();
 
     while (1)
