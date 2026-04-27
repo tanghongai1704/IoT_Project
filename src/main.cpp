@@ -30,7 +30,16 @@ void setup()
 
 void loop()
 {
-  if (check_info_File(1))
+  static bool wifiStarted = false;
+
+  if (check_info_File(1) && !wifiStarted)
+  {
+    startSTA();
+    wifiStarted = true;
+  }
+
+  // nếu mất mạng thì mới reconnect
+  if (wifiStarted && WiFi.status() != WL_CONNECTED)
   {
     Wifi_reconnect();
   }
