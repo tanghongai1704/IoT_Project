@@ -3,8 +3,6 @@
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
-bool webserver_isrunning = false;
-
 void Webserver_sendata(String data)
 {
     if (ws.count() > 0)
@@ -34,41 +32,42 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
 
         if (info->opcode == WS_TEXT)
         {
-            String message;
-            message += String((char *)data).substring(0, len);
+            String message = String((char *)data).substring(0, len);
             // parseJson(message, true);
             handleWebSocketMessage(message);
         }
     }
 }
 
-void connnectWSV()
+void webserver_init()
 {
     ws.onEvent(onEvent);
     server.addHandler(&ws);
+
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send(LittleFS, "/index.html", "text/html"); });
+
     server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send(LittleFS, "/script.js", "application/javascript"); });
+
     server.on("/styles.css", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send(LittleFS, "/styles.css", "text/css"); });
+
     server.begin();
     ElegantOTA.begin(&server);
-    webserver_isrunning = true;
+
+    Serial.println("WebServer started");
 }
 
-void Webserver_stop()
+void webserver_task(void *pvParameters)
 {
-    ws.closeAll();
-    server.end();
-    webserver_isrunning = false;
-}
+    webserver_init();
 
-void Webserver_reconnect()
-{
-    if (!webserver_isrunning)
+    while (1)
     {
-        connnectWSV();
+        ws.cleanupClients();
+        ElegantOTA.loop(); // OTA background
+
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
-    ElegantOTA.loop();
 }
