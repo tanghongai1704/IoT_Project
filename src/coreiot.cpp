@@ -16,7 +16,7 @@ void reconnect()
     {
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect (username=token, password=empty)
-        if (client.connect("ESP32Client", coreIOT_Token, NULL))
+        if (client.connect("ESP32Client", CORE_IOT_TOKEN.c_str(), NULL))
         {
             Serial.println("connected to CoreIOT Server!");
             client.subscribe("v1/devices/me/rpc/request/+");
@@ -66,12 +66,14 @@ void callback(char *topic, byte *payload, unsigned int length)
         if (strcmp(params, "ON") == 0)
         {
             Serial.println("Device turned ON.");
-            // TODO
+            // TODO: Implement LED ON logic
+            digitalWrite(48, HIGH);
         }
         else
         {
             Serial.println("Device turned OFF.");
-            // TODO
+            // TODO: Implement LED OFF logic
+            digitalWrite(48, LOW);
         }
     }
     else
@@ -105,7 +107,7 @@ void setup_coreiot()
 
     Serial.println(" Connected!");
 
-    client.setServer(coreIOT_Server, mqttPort);
+    client.setServer(CORE_IOT_SERVER.c_str(), CORE_IOT_PORT.toInt());
     client.setCallback(callback);
 }
 

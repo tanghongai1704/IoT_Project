@@ -31,6 +31,14 @@ void startSTA()
     {
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
+
+    Serial.print("[Wifi] Connected to WiFi. IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("[Wifi] SSID: ");
+    Serial.println(WIFI_SSID);
+    Serial.print("[Wifi] Password: ");
+    Serial.println(WIFI_PASS);
+
     // Give a semaphore here
     xSemaphoreGive(xBinarySemaphoreInternet);
 }
