@@ -17,4 +17,16 @@ extern String CORE_IOT_PORT;
 
 extern boolean isWifiConnected;
 extern SemaphoreHandle_t xBinarySemaphoreInternet;
+
+// ================= DEVICE STATE =================
+extern bool led_state;
+
+extern String device_mode; // AUTO / MANUAL
+
+// NeoPixel state
+extern int neo_r;
+extern int neo_g;
+extern int neo_b;
+extern int neo_brightness;
+
 #endif

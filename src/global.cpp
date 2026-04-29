@@ -10,3 +10,12 @@ String CORE_IOT_PORT;
 
 boolean isWifiConnected = false;
 SemaphoreHandle_t xBinarySemaphoreInternet = xSemaphoreCreateBinary();
+
+bool led_state = false;
+
+String device_mode = "AUTO";
+
+int neo_r = 255;
+int neo_g = 107;
+int neo_b = 107;
+int neo_brightness = 120;
