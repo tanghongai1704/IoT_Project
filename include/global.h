@@ -8,6 +8,7 @@
 
 extern float glob_temperature;
 extern float glob_humidity;
+extern float glob_humidex;
 
 extern String WIFI_SSID;
 extern String WIFI_PASS;

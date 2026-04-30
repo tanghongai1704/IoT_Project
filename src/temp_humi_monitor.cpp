@@ -2,6 +2,20 @@
 DHT20 dht20;
 LiquidCrystal_I2C lcd(33, 16, 2);
 
+float calcHumidex(float T_air, float HR)
+{
+    // 1. Tính áp suất hơi nước (e)
+    // Công thức: e = 6.112 * 10^((7.5 * T_air) / (237.7 + T_air)) * (HR / 100)
+    float exponent = (7.5 * T_air) / (237.7 + T_air);
+    float e = 6.112 * std::pow(10, exponent) * (HR / 100.0);
+
+    // 2. Tính chỉ số Humidex
+    // Công thức: Humidex = T_air + 5/9 * (e - 10)
+    float humidex = T_air + (5.0 / 9.0) * (e - 10.0);
+
+    return humidex;
+}
+
 void temp_humi_monitor(void *pvParameters)
 {
 
@@ -30,6 +44,7 @@ void temp_humi_monitor(void *pvParameters)
         // Update global variables for temperature and humidity
         glob_temperature = temperature;
         glob_humidity = humidity;
+        glob_humidex = calcHumidex(temperature, humidity);
 
         // Print the results
 
@@ -38,6 +53,8 @@ void temp_humi_monitor(void *pvParameters)
         Serial.print("%  Temperature: ");
         Serial.print(temperature);
         Serial.println("°C");
+        Serial.print("Humidex: ");
+        Serial.println(glob_humidex);
 
         vTaskDelay(5000);
     }
