@@ -20,5 +20,6 @@ void setupServer();
 void connectToWiFi();
 
 void main_server_task(void *pvParameters);
+bool serveFile(const char *path, const char *type);
 
 #endif

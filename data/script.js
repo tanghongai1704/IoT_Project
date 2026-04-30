@@ -1,291 +1,647 @@
-// ==================== WEBSOCKET ====================
-var gateway = `ws://${window.location.hostname}/ws`;
-var websocket;
+/**
+ * IoT Dashboard Script
+ * Handles API integration, real-time monitoring, device control, and configuration
+ */
 
-// ==================== GLOBAL DATA ====================
-let relayList = [];
-let deleteTarget = null;
+// ========== CONFIG ==========
+const API_BASE = '/api';
+const POLL_INTERVALS = {
+    sensors: 2000,  // 2 seconds
+    devices: 2000,  // 2 seconds
+    system: 5000    // 5 seconds
+};
 
-// ⚠️ Quan trọng: đưa gauge ra global
-let gaugeTemp;
-let gaugeHumi;
-
-// ==================== INIT ====================
-window.addEventListener('load', onLoad);
-
-function onLoad() {
-    initGauges();     // 🔥 tạo UI trước
-    initWebSocket();  // 🔥 rồi mới connect
-}
-
-// ==================== WEBSOCKET ====================
-function initWebSocket() {
-    console.log('🔌 Trying to open WebSocket...');
-    websocket = new WebSocket(gateway);
-
-    websocket.onopen = () => console.log('✅ WebSocket Connected');
-    websocket.onclose = () => {
-        console.log('❌ WebSocket Disconnected → retry...');
-        setTimeout(initWebSocket, 2000);
-    };
-    websocket.onmessage = onMessage;
-}
-
-function Send_Data(data) {
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-        websocket.send(data);
-        console.log("📤 Gửi:", data);
-    } else {
-        console.warn("⚠️ WebSocket chưa sẵn sàng!");
+// ========== STATE MANAGEMENT ==========
+const state = {
+    system: {
+        ssid: 'ESP32_AP',
+        ip: '192.168.4.1',
+        apPassword: '12345678'
+    },
+    sensors: {
+        temperature: 0,
+        humidity: 0,
+        humidex: 0,
+        stateTemp: 'NORMAL',
+        stateHum: 'COMFORT',
+        comfort: 'EASY'
+    },
+    devices: {
+        mode: 'AUTO',
+        led: {
+            state: false,
+            logicState: 'COLD'
+        },
+        neo: {
+            color: [255, 107, 107],
+            brightness: 120,
+            logicState: 'DRY'
+        }
     }
-}
+};
 
-// ==================== RECEIVE DATA ====================
-function onMessage(event) {
-    console.log("📩 Nhận:", event.data);
+let pollTimers = {
+    sensors: null,
+    devices: null,
+    system: null
+};
 
+let toastTimer = null;
+
+// Track if user is editing NeoPixel controls
+let isEditingNeo = false;
+let editingNeoTimeout = null;
+
+// ========== API FUNCTIONS ==========
+
+/**
+ * Generic API request handler
+ */
+async function apiRequest(endpoint, method = 'GET', data = null) {
     try {
-        const data = JSON.parse(event.data);
-
-        if (data.page === "home") {
-
-            // 🔥 CHẶN nếu gauge chưa sẵn sàng
-            if (!gaugeTemp || !gaugeHumi) {
-                console.warn("⚠️ Gauge chưa init!");
-                return;
+        const options = {
+            method,
+            headers: {
+                'Content-Type': 'application/json'
             }
+        };
 
-            if (data.value.temp !== undefined) {
-                gaugeTemp.refresh(Number(data.value.temp));
-            }
-
-            if (data.value.humi !== undefined) {
-                gaugeHumi.refresh(Number(data.value.humi));
-            }
+        if (data && (method === 'POST' || method === 'PUT')) {
+            options.body = JSON.stringify(data);
         }
 
-    } catch (e) {
-        console.warn("JSON lỗi:", event.data);
+        const response = await fetch(`${API_BASE}${endpoint}`, options);
+
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+
+        const responseData = await response.json();
+        return { success: true, data: responseData };
+    } catch (error) {
+        console.error(`API Request Error (${endpoint}):`, error);
+        return { success: false, error: error.message };
     }
 }
 
-// ==================== GAUGES ====================
-function initGauges() {
-    gaugeTemp = createGauge("gauge_temp", {
-        label: "Nhiệt độ",
-        unit: "°C",
-        min: -10,
-        max: 50,
-        colors: ["#00BCD4", "#4CAF50", "#FFC107", "#F44336"]
-    });
-
-    gaugeHumi = createGauge("gauge_humi", {
-        label: "Độ ẩm",
-        unit: "%",
-        min: 0,
-        max: 100,
-        colors: ["#42A5F5", "#00BCD4", "#0288D1"]
-    });
-}
-
-function createGauge(containerId, config) {
-    const container = document.getElementById(containerId);
-    const clampedMin = Number(config.min);
-    const clampedMax = Number(config.max);
-
-    container.innerHTML = `
-        <div class="gauge-shell">
-            <div class="gauge-ring">
-                <div class="gauge-center">
-                    <div class="gauge-value">0</div>
-                    <div class="gauge-unit"></div>
-                </div>
-            </div>
-            <div class="gauge-meta">
-                <span class="gauge-label"></span>
-                <span class="gauge-range"></span>
-            </div>
-        </div>
-    `;
-
-    const gaugeShell = container.querySelector('.gauge-shell');
-    const valueEl = container.querySelector('.gauge-value');
-    const unitEl = container.querySelector('.gauge-unit');
-    const labelEl = container.querySelector('.gauge-label');
-    const rangeEl = container.querySelector('.gauge-range');
-
-    unitEl.textContent = config.unit;
-    labelEl.textContent = config.label;
-    rangeEl.textContent = `${clampedMin} ${config.unit} - ${clampedMax} ${config.unit}`;
-
-    const update = (value) => {
-        const numericValue = Number.isFinite(value) ? value : 0;
-        const cappedValue = Math.min(Math.max(numericValue, clampedMin), clampedMax);
-        const percent = ((cappedValue - clampedMin) / (clampedMax - clampedMin)) * 100;
-        const color = pickGaugeColor(percent, config.colors);
-
-        gaugeShell.style.setProperty('--gauge-progress', `${percent}%`);
-        gaugeShell.style.setProperty('--gauge-accent', color);
-        valueEl.textContent = Number.isInteger(cappedValue) ? cappedValue.toString() : cappedValue.toFixed(1);
-    };
-
-    update(0);
-
-    return {
-        refresh: update
-    };
-}
-
-function pickGaugeColor(percent, colors) {
-    if (!colors || colors.length === 0) {
-        return '#2294F2';
+/**
+ * Fetch system information
+ */
+async function fetchSystemInfo() {
+    const result = await apiRequest('/system');
+    if (result.success) {
+        state.system = {
+            ssid: result.data.ssid || 'ESP32_AP',
+            ip: result.data.ip || '192.168.4.1',
+            apPassword: result.data.ap_password || '12345678'
+        };
+        updateSystemUI();
     }
+    return result;
+}
 
-    if (colors.length === 1) {
-        return colors[0];
+/**
+ * Fetch sensor data
+ */
+async function fetchSensorData() {
+    const result = await apiRequest('/sensors');
+    if (result.success) {
+        state.sensors = {
+            temperature: parseFloat(result.data.temperature) || 0,
+            humidity: parseFloat(result.data.humidity) || 0,
+            humidex: parseFloat(result.data.humidex) || 0,
+            stateTemp: result.data.state_temp || 'NORMAL',
+            stateHum: result.data.state_hum || 'COMFORT',
+            comfort: result.data.comfort || 'EASY'
+        };
+        updateSensorUI();
     }
+    return result;
+}
 
-    if (colors.length === 2) {
-        return percent < 50 ? colors[0] : colors[1];
+/**
+ * Fetch device state
+ */
+async function fetchDeviceState() {
+    const result = await apiRequest('/devices');
+    if (result.success) {
+        const data = result.data;
+        state.devices = {
+            mode: data.mode || 'AUTO',
+            led: {
+                state: data.led?.state || false,
+                logicState: data.led?.logic_state || 'COLD'
+            },
+            neo: {
+                color: data.neo?.color || [255, 107, 107],
+                brightness: data.neo?.brightness || 0,
+                logicState: data.neo?.logic_state || 'DRY'
+            }
+        };
+        updateDeviceUI();
     }
+    return result;
+}
 
-    if (colors.length === 3) {
-        if (percent < 34) return colors[0];
-        if (percent < 67) return colors[1];
-        return colors[2];
+/**
+ * Control devices
+ */
+async function controlDevices(controlData) {
+    showLoading(true);
+    const result = await apiRequest('/control', 'POST', controlData);
+    showLoading(false);
+
+    if (result.success) {
+        showToast('Device control sent successfully', 'success');
+        // Refresh device state
+        await fetchDeviceState();
+    } else {
+        showToast(`Error: ${result.error}`, 'error');
     }
-
-    if (percent < 25) return colors[0];
-    if (percent < 50) return colors[1];
-    if (percent < 75) return colors[2];
-    return colors[3];
+    return result;
 }
 
-// ==================== UI NAVIGATION ====================
-function showSection(id, event) {
-    document.querySelectorAll('.section').forEach(sec => sec.style.display = 'none');
-    document.getElementById(id).style.display = id === 'settings' ? 'flex' : 'block';
+/**
+ * Update WiFi and cloud configuration
+ */
+async function updateConfig(configData) {
+    showLoading(true);
+    const result = await apiRequest('/config', 'POST', configData);
+    showLoading(false);
 
-    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-    event.currentTarget.classList.add('active');
+    if (result.success) {
+        showToast('Configuration updated successfully', 'success');
+    } else {
+        showToast(`Error: ${result.error}`, 'error');
+    }
+    return result;
 }
 
-// ==================== DEVICE FUNCTIONS ====================
-function openAddRelayDialog() {
-    document.getElementById('addRelayDialog').style.display = 'flex';
+/**
+ * Update system settings
+ */
+async function updateSettings(settingsData) {
+    showLoading(true);
+    const result = await apiRequest('/settings', 'POST', settingsData);
+    showLoading(false);
+
+    if (result.success) {
+        showToast('Settings updated successfully', 'success');
+    } else {
+        showToast(`Error: ${result.error}`, 'error');
+    }
+    return result;
 }
 
-function closeAddRelayDialog() {
-    document.getElementById('addRelayDialog').style.display = 'none';
-}
-
-function saveRelay() {
-    const name = document.getElementById('relayName').value.trim();
-    const gpio = document.getElementById('relayGPIO').value.trim();
-
-    if (!name || !gpio) {
-        alert("⚠️ Nhập đủ thông tin!");
+/**
+ * Reset system
+ */
+async function resetSystem() {
+    if (!confirm('Are you sure you want to reset the device? This will clear all configuration.')) {
         return;
     }
 
-    relayList.push({
-        id: Date.now(),
-        name,
-        gpio,
-        state: false
-    });
+    showLoading(true);
+    const result = await apiRequest('/reset', 'POST', {});
+    showLoading(false);
 
-    renderRelays();
-    closeAddRelayDialog();
+    if (result.success) {
+        showToast('Device reset initiated. It will restart shortly.', 'success');
+    } else {
+        showToast(`Error: ${result.error}`, 'error');
+    }
+    return result;
 }
 
-function renderRelays() {
-    const container = document.getElementById('relayContainer');
-    container.innerHTML = "";
+// ========== UI UPDATE FUNCTIONS ==========
 
-    relayList.forEach(r => {
-        const card = document.createElement('div');
-        card.className = 'device-card';
-
-        card.innerHTML = `
-            <div class="device-icon">🔌</div>
-            <h3>${r.name}</h3>
-            <p>GPIO: ${r.gpio}</p>
-
-            <button class="toggle-btn ${r.state ? 'on' : ''}" 
-                onclick="toggleRelay(${r.id})">
-                ${r.state ? 'ON' : 'OFF'}
-            </button>
-
-            <button class="delete-icon" 
-                onclick="showDeleteDialog(${r.id})" aria-label="Xóa relay">🗑</button>
-        `;
-
-        container.appendChild(card);
-    });
+/**
+ * Update system info in UI
+ */
+function updateSystemUI() {
+    document.getElementById('systemSsid').textContent = state.system.ssid;
+    document.getElementById('systemIp').textContent = state.system.ip;
 }
 
-function toggleRelay(id) {
-    const relay = relayList.find(r => r.id === id);
+/**
+ * Update sensor data in UI
+ */
+function updateSensorUI() {
+    // Temperature
+    document.getElementById('sensorTemp').textContent = `${state.sensors.temperature.toFixed(1)}`;
+    document.getElementById('sensorTempState').textContent = state.sensors.stateTemp;
+    document.getElementById('sensorTempState').className = `sensor-state state-${state.sensors.stateTemp.toLowerCase()}`;
 
-    if (!relay) return;
+    // Humidity
+    document.getElementById('sensorHum').textContent = `${state.sensors.humidity.toFixed(1)}`;
+    document.getElementById('sensorHumState').textContent = state.sensors.stateHum;
+    document.getElementById('sensorHumState').className = `sensor-state state-${state.sensors.stateHum.toLowerCase()}`;
 
-    relay.state = !relay.state;
+    // Humidex and Comfort
+    document.getElementById('sensorHumidex').textContent = state.sensors.humidex.toFixed(1);
+    document.getElementById('sensorComfort').textContent = state.sensors.comfort;
+    document.getElementById('sensorComfort').className = `sensor-state state-${state.sensors.comfort.toLowerCase()}`;
 
-    const json = JSON.stringify({
-        page: "device",
-        value: {
-            name: relay.name,
-            gpio: relay.gpio,
-            status: relay.state ? "ON" : "OFF"
-        }
-    });
+    // Update comfort recommendation
+    updateComfortRecommendation();
 
-    Send_Data(json);
-    renderRelays();
+    // Update timestamp
+    document.getElementById('sensorUpdateTime').textContent = `Last update: ${new Date().toLocaleTimeString()}`;
 }
 
-// ===== Sync từ ESP =====
-function updateRelayFromESP(data) {
-    const relay = relayList.find(r => r.gpio == data.gpio);
+/**
+ * Update comfort recommendation
+ */
+function updateComfortRecommendation() {
+    const recommendations = {
+        'EASY': '💧 Stay hydrated and enjoy the comfort',
+        'STICKY': '💦 Drink more water - humidity is high',
+        'UNCOMFY': '😓 Limit strenuous activity',
+        'RISKY': '⚠️ Avoid outdoor work - conditions are unsafe'
+    };
 
-    if (relay) {
-        relay.state = (data.status === "ON");
-        renderRelays();
+    const comfort = state.sensors.comfort || 'EASY';
+    document.getElementById('comfortRecommendation').textContent = recommendations[comfort] || recommendations['EASY'];
+}
+
+/**
+ * Update device control UI
+ */
+function updateDeviceUI() {
+    const { mode, led, neo } = state.devices;
+
+    // Mode
+    document.getElementById('modeAuto').classList.toggle('active', mode === 'AUTO');
+    document.getElementById('modeManual').classList.toggle('active', mode === 'MANUAL');
+
+    // LED
+    const ledStatus = led.state ? 'ON' : 'OFF';
+    document.getElementById('ledStatus').textContent = ledStatus;
+    document.getElementById('ledStatus').className = `status-badge state-${ledStatus.toLowerCase()}`;
+    document.getElementById('ledLogicState').textContent = `Logic State: ${led.logicState}`;
+
+    // NeoPixel - Skip update if user is currently editing
+    if (!isEditingNeo) {
+        const [r, g, b] = neo.color;
+        document.getElementById('neoRed').value = r;
+        document.getElementById('neoGreen').value = g;
+        document.getElementById('neoBlue').value = b;
+        document.getElementById('neoBrightness').value = neo.brightness;
+        document.getElementById('brightnesValue').textContent = neo.brightness;
+
+        const hexColor = rgbToHex(r, g, b);
+        document.getElementById('neoColorPicker').value = hexColor;
+        document.getElementById('colorPreview').style.backgroundColor = hexColor;
+    }
+
+    document.getElementById('neoLogicState').textContent = `Logic State: ${neo.logicState}`;
+
+    // Disable LED control if in AUTO mode
+    document.getElementById('ledToggleBtn').disabled = mode === 'AUTO';
+    document.getElementById('applyNeoBtn').disabled = mode === 'AUTO';
+    const neoControls = document.querySelectorAll('#neoColorPicker, #neoRed, #neoGreen, #neoBlue, #neoBrightness');
+    neoControls.forEach(ctrl => ctrl.disabled = mode === 'AUTO');
+}
+
+// ========== COLOR CONVERSION ==========
+
+/**
+ * Convert RGB to Hex
+ */
+function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(x => {
+        const hex = x.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    }).join('').toUpperCase();
+}
+
+/**
+ * Convert Hex to RGB
+ */
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? [
+        parseInt(result[1], 16),
+        parseInt(result[2], 16),
+        parseInt(result[3], 16)
+    ] : [255, 107, 107];
+}
+
+// ========== EVENT LISTENERS ==========
+
+/**
+ * Initialize event listeners
+ */
+function initializeEventListeners() {
+    // Navigation
+    document.getElementById('navMainPage').addEventListener('click', () => navigateTo('mainpage'));
+    document.getElementById('navConfig').addEventListener('click', () => navigateTo('config'));
+
+    // System Info
+    document.getElementById('updateApPasswordBtn').addEventListener('click', updateApPassword);
+    document.getElementById('updateApNameBtn').addEventListener('click', updateApName);
+
+    // Mode Control
+    document.getElementById('modeAuto').addEventListener('click', () => switchMode('AUTO'));
+    document.getElementById('modeManual').addEventListener('click', () => switchMode('MANUAL'));
+
+    // LED Control
+    document.getElementById('ledToggleBtn').addEventListener('click', toggleLED);
+
+    // NeoPixel Control
+    document.getElementById('neoColorPicker').addEventListener('input', (e) => {
+        setNeoEditingState();
+        const [r, g, b] = hexToRgb(e.target.value);
+        document.getElementById('neoRed').value = r;
+        document.getElementById('neoGreen').value = g;
+        document.getElementById('neoBlue').value = b;
+        updateColorPreview();
+    });
+
+    document.getElementById('neoRed').addEventListener('input', updateColorPreview);
+    document.getElementById('neoGreen').addEventListener('input', updateColorPreview);
+    document.getElementById('neoBlue').addEventListener('input', updateColorPreview);
+    document.getElementById('neoBrightness').addEventListener('input', (e) => {
+        setNeoEditingState();
+        document.getElementById('brightnesValue').textContent = e.target.value;
+    });
+
+    document.getElementById('applyNeoBtn').addEventListener('click', applyNeoPixelChanges);
+
+    // Config Form
+    document.getElementById('configResetBtn').addEventListener('click', resetConfigForm);
+    document.getElementById('configConnectBtn').addEventListener('click', submitConfigForm);
+
+    // Sensor Settings
+    document.getElementById('sensorSettingsBtn').addEventListener('click', saveSensorSettings);
+
+    // System Reset
+    document.getElementById('systemResetBtn').addEventListener('click', resetSystem);
+}
+
+/**
+ * Navigate between pages
+ */
+function navigateTo(page) {
+    // Update nav buttons
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    if (page === 'mainpage') {
+        document.getElementById('navMainPage').classList.add('active');
+    } else {
+        document.getElementById('navConfig').classList.add('active');
+    }
+
+    // Update pages
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(page + 'Page').classList.add('active');
+}
+
+/**
+ * Update AP password
+ */
+async function updateApPassword() {
+    const newPassword = document.getElementById('apPasswordInput').value;
+    if (!newPassword) {
+        showToast('Please enter a new password', 'warning');
+        return;
+    }
+
+    await updateSettings({ ap_password: newPassword });
+    document.getElementById('apPasswordInput').value = '';
+}
+
+/**
+ * Update AP name (SSID)
+ */
+async function updateApName() {
+    const newApName = document.getElementById('apNameInput').value;
+    if (!newApName) {
+        showToast('Please enter a new AP name', 'warning');
+        return;
+    }
+
+    await updateSettings({ ap_ssid: newApName });
+    document.getElementById('apNameInput').value = '';
+}
+
+/**
+ * Switch operating mode
+ */
+async function switchMode(newMode) {
+    const controlData = { mode: newMode };
+    await controlDevices(controlData);
+}
+
+/**
+ * Toggle LED
+ */
+async function toggleLED() {
+    const newState = !state.devices.led.state;
+    const controlData = {
+        mode: state.devices.mode,
+        led: newState
+    };
+    await controlDevices(controlData);
+}
+
+/**
+ * Update color preview
+ */
+function updateColorPreview() {
+    setNeoEditingState();
+    const r = parseInt(document.getElementById('neoRed').value) || 0;
+    const g = parseInt(document.getElementById('neoGreen').value) || 0;
+    const b = parseInt(document.getElementById('neoBlue').value) || 0;
+    const hex = rgbToHex(r, g, b);
+    document.getElementById('neoColorPicker').value = hex;
+    document.getElementById('colorPreview').style.backgroundColor = hex;
+}
+
+/**
+ * Set editing state for NeoPixel
+ * Mark that user is currently editing, so polling won't overwrite UI values
+ */
+function setNeoEditingState() {
+    isEditingNeo = true;
+    clearTimeout(editingNeoTimeout);
+    // Auto-clear editing state after 10 seconds of inactivity
+    editingNeoTimeout = setTimeout(() => {
+        isEditingNeo = false;
+    }, 10000);
+}
+
+/**
+ * Clear editing state for NeoPixel
+ */
+function clearNeoEditingState() {
+    isEditingNeo = false;
+    clearTimeout(editingNeoTimeout);
+}
+
+/**
+ * Apply NeoPixel changes
+ */
+async function applyNeoPixelChanges() {
+    const r = parseInt(document.getElementById('neoRed').value) || 0;
+    const g = parseInt(document.getElementById('neoGreen').value) || 0;
+    const b = parseInt(document.getElementById('neoBlue').value) || 0;
+    const brightness = parseInt(document.getElementById('neoBrightness').value) || 0;
+
+    const controlData = {
+        mode: state.devices.mode,
+        neo: { r: r, g: g, b: b, brightness: brightness }
+    };
+
+    // Clear editing state before sending
+    clearNeoEditingState();
+    await controlDevices(controlData);
+}
+
+/**
+ * Reset config form
+ */
+function resetConfigForm() {
+    document.getElementById('configForm').reset();
+    document.getElementById('configSsid').value = '';
+    document.getElementById('configPassword').value = '';
+    document.getElementById('configToken').value = '';
+    document.getElementById('configServer').value = '';
+    document.getElementById('configPort').value = '1883';
+}
+
+/**
+ * Submit config form
+ */
+async function submitConfigForm() {
+    const configData = {
+        ssid: document.getElementById('configSsid').value,
+        password: document.getElementById('configPassword').value,
+        token: document.getElementById('configToken').value,
+        server: document.getElementById('configServer').value,
+        port: parseInt(document.getElementById('configPort').value) || 1883
+    };
+
+    // Validate required fields
+    if (!configData.ssid || !configData.password) {
+        showToast('Please fill in SSID and password', 'warning');
+        return;
+    }
+
+    await updateConfig(configData);
+}
+
+/**
+ * Save sensor settings
+ */
+async function saveSensorSettings() {
+    const interval = parseInt(document.getElementById('sensorInterval').value) || 5;
+    await updateSettings({ sensor_interval: interval });
+}
+
+// ========== POLLING ==========
+
+/**
+ * Start polling sensor data
+ */
+function startSensorPolling() {
+    fetchSensorData(); // Initial fetch
+    clearInterval(pollTimers.sensors);
+    pollTimers.sensors = setInterval(fetchSensorData, POLL_INTERVALS.sensors);
+}
+
+/**
+ * Start polling device state
+ */
+function startDevicePolling() {
+    fetchDeviceState(); // Initial fetch
+    clearInterval(pollTimers.devices);
+    pollTimers.devices = setInterval(fetchDeviceState, POLL_INTERVALS.devices);
+}
+
+/**
+ * Start polling system info
+ */
+function startSystemPolling() {
+    fetchSystemInfo(); // Initial fetch
+    clearInterval(pollTimers.system);
+    pollTimers.system = setInterval(fetchSystemInfo, POLL_INTERVALS.system);
+}
+
+/**
+ * Stop all polling
+ */
+function stopAllPolling() {
+    clearInterval(pollTimers.sensors);
+    clearInterval(pollTimers.devices);
+    clearInterval(pollTimers.system);
+}
+
+// ========== NOTIFICATIONS ==========
+
+/**
+ * Show toast notification
+ */
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('statusToast');
+    const toastMessage = document.getElementById('toastMessage');
+
+    toastMessage.textContent = message;
+    toast.className = `toast ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+        toast.className = 'toast hidden';
+    }, 4000);
+}
+
+/**
+ * Show/hide loading overlay
+ */
+function showLoading(show = true) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (show) {
+        overlay.classList.remove('hidden');
+    } else {
+        overlay.classList.add('hidden');
     }
 }
 
-// ==================== DELETE ====================
-function showDeleteDialog(id) {
-    deleteTarget = id;
-    document.getElementById('confirmDeleteDialog').style.display = 'flex';
+// ========== INITIALIZATION ==========
+
+/**
+ * Initialize dashboard
+ */
+async function initializeDashboard() {
+    console.log('Initializing IoT Dashboard...');
+
+    // Initialize event listeners
+    initializeEventListeners();
+
+    // Initial data fetch
+    showLoading(true);
+    await Promise.all([
+        fetchSystemInfo(),
+        fetchSensorData(),
+        fetchDeviceState()
+    ]);
+    showLoading(false);
+
+    // Start polling
+    startSensorPolling();
+    startDevicePolling();
+    startSystemPolling();
+
+    console.log('Dashboard initialized successfully');
+    showToast('Dashboard connected to device', 'success');
 }
 
-function closeConfirmDelete() {
-    document.getElementById('confirmDeleteDialog').style.display = 'none';
-}
-
-function confirmDelete() {
-    relayList = relayList.filter(r => r.id !== deleteTarget);
-    renderRelays();
-    closeConfirmDelete();
-}
-
-// ==================== SETTINGS ====================
-document.getElementById("settingsForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-
-    const json = JSON.stringify({
-        page: "setting",
-        value: {
-            ssid: document.getElementById("ssid").value.trim(),
-            password: document.getElementById("password").value.trim(),
-            token: document.getElementById("token").value.trim(),
-            server: document.getElementById("server").value.trim(),
-            port: document.getElementById("port").value.trim()
-        }
-    });
-
-    Send_Data(json);
-    alert("✅ Đã gửi config!");
+/**
+ * Cleanup on page unload
+ */
+window.addEventListener('beforeunload', () => {
+    stopAllPolling();
 });
+
+/**
+ * Start dashboard when DOM is ready
+ */
+document.addEventListener('DOMContentLoaded', initializeDashboard);
