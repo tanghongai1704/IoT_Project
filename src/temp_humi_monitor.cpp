@@ -56,6 +56,6 @@ void temp_humi_monitor(void *pvParameters)
         Serial.print("Humidex: ");
         Serial.println(glob_humidex);
 
-        vTaskDelay(5000);
+        vTaskDelay(pdMS_TO_TICKS(READ_INTERVAL));
     }
 }

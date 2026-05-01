@@ -14,9 +14,19 @@ const POLL_INTERVALS = {
 // ========== STATE MANAGEMENT ==========
 const state = {
     system: {
-        ssid: 'ESP32_AP',
+        ssid: 'ESP32 LOCAL',
         ip: '192.168.4.1',
         apPassword: '12345678'
+    },
+    config: {
+        wifiSsid: '',
+        wifiPassword: '',
+        deviceToken: '',
+        mqttServer: 'app.coreiot.io',
+        mqttPort: 1883,
+        apName: 'ESP32 LOCAL',
+        apPassword: '12345678',
+        readInterval: 5000
     },
     sensors: {
         temperature: 0,
@@ -51,6 +61,10 @@ let toastTimer = null;
 // Track if user is editing NeoPixel controls
 let isEditingNeo = false;
 let editingNeoTimeout = null;
+
+// Track if user is editing Config controls
+let isEditingConfig = false;
+let editingConfigTimeout = null;
 
 // ========== API FUNCTIONS ==========
 
@@ -87,15 +101,32 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
 /**
  * Fetch system information
  */
-async function fetchSystemInfo() {
+async function fetchSystemInfo(syncConfigForm = false) {
     const result = await apiRequest('/system');
     if (result.success) {
         state.system = {
-            ssid: result.data.ssid || 'ESP32_AP',
+            ssid: result.data.ssid || 'ESP32 LOCAL',
             ip: result.data.ip || '192.168.4.1',
             apPassword: result.data.ap_password || '12345678'
         };
+
+        if (!isEditingConfig) {
+            state.config = {
+                wifiSsid: result.data.wifi_ssid || state.config.wifiSsid || '',
+                wifiPassword: result.data.wifi_password || state.config.wifiPassword || '',
+                deviceToken: result.data.device_token || state.config.deviceToken || '',
+                mqttServer: result.data.mqtt_server || state.config.mqttServer || 'app.coreiot.io',
+                mqttPort: parseInt(result.data.mqtt_port) || state.config.mqttPort || 1883,
+                apName: result.data.ap_name || state.config.apName || state.system.ssid || 'ESP32 LOCAL',
+                apPassword: result.data.ap_password || state.config.apPassword || '12345678',
+                readInterval: parseInt(result.data.read_interval) || state.config.readInterval || 5000
+            };
+        }
+
         updateSystemUI();
+        if (syncConfigForm) {
+            syncConfigFormFromState();
+        }
     }
     return result;
 }
@@ -170,6 +201,12 @@ async function updateConfig(configData) {
     showLoading(false);
 
     if (result.success) {
+        state.config.wifiSsid = configData.ssid || state.config.wifiSsid;
+        state.config.wifiPassword = configData.password || state.config.wifiPassword;
+        state.config.deviceToken = configData.token || state.config.deviceToken;
+        state.config.mqttServer = configData.server || state.config.mqttServer;
+        state.config.mqttPort = configData.port || state.config.mqttPort;
+        syncConfigFormFromState();
         showToast('Configuration updated successfully', 'success');
     } else {
         showToast(`Error: ${result.error}`, 'error');
@@ -186,6 +223,16 @@ async function updateSettings(settingsData) {
     showLoading(false);
 
     if (result.success) {
+        if (typeof settingsData.ap_ssid !== 'undefined') {
+            state.config.apName = settingsData.ap_ssid;
+        }
+        if (typeof settingsData.ap_password !== 'undefined') {
+            state.config.apPassword = settingsData.ap_password;
+        }
+        if (typeof settingsData.sensor_interval !== 'undefined') {
+            state.config.readInterval = parseInt(settingsData.sensor_interval) || state.config.readInterval;
+        }
+        syncConfigFormFromState();
         showToast('Settings updated successfully', 'success');
     } else {
         showToast(`Error: ${result.error}`, 'error');
@@ -224,21 +271,48 @@ function updateSystemUI() {
 }
 
 /**
+ * Sync config form inputs from current state
+ */
+function syncConfigFormFromState() {
+    if (isEditingConfig) {
+        return;
+    }
+
+    const configMappings = {
+        configSsid: state.config.wifiSsid,
+        configPassword: state.config.wifiPassword,
+        configToken: state.config.deviceToken,
+        configServer: state.config.mqttServer,
+        configPort: state.config.mqttPort,
+        apNameInput: state.config.apName,
+        apPasswordInput: state.config.apPassword,
+        sensorInterval: state.config.readInterval
+    };
+
+    Object.entries(configMappings).forEach(([elementId, value]) => {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.value = value;
+        }
+    });
+}
+
+/**
  * Update sensor data in UI
  */
 function updateSensorUI() {
     // Temperature
-    document.getElementById('sensorTemp').textContent = `${state.sensors.temperature.toFixed(1)}`;
+    document.getElementById('sensorTemp').textContent = `${state.sensors.temperature.toFixed(2)}`;
     document.getElementById('sensorTempState').textContent = state.sensors.stateTemp;
     document.getElementById('sensorTempState').className = `sensor-state state-${state.sensors.stateTemp.toLowerCase()}`;
 
     // Humidity
-    document.getElementById('sensorHum').textContent = `${state.sensors.humidity.toFixed(1)}`;
+    document.getElementById('sensorHum').textContent = `${state.sensors.humidity.toFixed(2)}`;
     document.getElementById('sensorHumState').textContent = state.sensors.stateHum;
     document.getElementById('sensorHumState').className = `sensor-state state-${state.sensors.stateHum.toLowerCase()}`;
 
     // Humidex and Comfort
-    document.getElementById('sensorHumidex').textContent = state.sensors.humidex.toFixed(1);
+    document.getElementById('sensorHumidex').textContent = state.sensors.humidex.toFixed(2);
     document.getElementById('sensorComfort').textContent = state.sensors.comfort;
     document.getElementById('sensorComfort').className = `sensor-state state-${state.sensors.comfort.toLowerCase()}`;
 
@@ -372,6 +446,18 @@ function initializeEventListeners() {
     document.getElementById('configResetBtn').addEventListener('click', resetConfigForm);
     document.getElementById('configConnectBtn').addEventListener('click', submitConfigForm);
 
+    // Lock config sync while user is typing
+    const configFields = [
+        'configSsid', 'configPassword', 'configToken', 'configServer',
+        'configPort', 'apNameInput', 'apPasswordInput', 'sensorInterval'
+    ];
+    configFields.forEach((fieldId) => {
+        const element = document.getElementById(fieldId);
+        if (element) {
+            element.addEventListener('input', setConfigEditingState);
+        }
+    });
+
     // Sensor Settings
     document.getElementById('sensorSettingsBtn').addEventListener('click', saveSensorSettings);
 
@@ -406,8 +492,11 @@ async function updateApPassword() {
         return;
     }
 
+    state.config.apPassword = newPassword;
+    clearConfigEditingState();
     await updateSettings({ ap_password: newPassword });
     document.getElementById('apPasswordInput').value = '';
+    showToast('AP password updated. Please reset the device for changes to take effect.', 'info');
 }
 
 /**
@@ -420,8 +509,11 @@ async function updateApName() {
         return;
     }
 
+    state.config.apName = newApName;
+    clearConfigEditingState();
     await updateSettings({ ap_ssid: newApName });
     document.getElementById('apNameInput').value = '';
+    showToast('AP name updated. Please reset the device for changes to take effect.', 'info');
 }
 
 /**
@@ -479,6 +571,25 @@ function clearNeoEditingState() {
 }
 
 /**
+ * Set editing state for Config inputs
+ */
+function setConfigEditingState() {
+    isEditingConfig = true;
+    clearTimeout(editingConfigTimeout);
+    editingConfigTimeout = setTimeout(() => {
+        isEditingConfig = false;
+    }, 15000);
+}
+
+/**
+ * Clear editing state for Config inputs
+ */
+function clearConfigEditingState() {
+    isEditingConfig = false;
+    clearTimeout(editingConfigTimeout);
+}
+
+/**
  * Apply NeoPixel changes
  */
 async function applyNeoPixelChanges() {
@@ -501,12 +612,8 @@ async function applyNeoPixelChanges() {
  * Reset config form
  */
 function resetConfigForm() {
-    document.getElementById('configForm').reset();
-    document.getElementById('configSsid').value = '';
-    document.getElementById('configPassword').value = '';
-    document.getElementById('configToken').value = '';
-    document.getElementById('configServer').value = '';
-    document.getElementById('configPort').value = '1883';
+    clearConfigEditingState();
+    syncConfigFormFromState();
 }
 
 /**
@@ -527,6 +634,7 @@ async function submitConfigForm() {
         return;
     }
 
+    clearConfigEditingState();
     await updateConfig(configData);
 }
 
@@ -534,7 +642,9 @@ async function submitConfigForm() {
  * Save sensor settings
  */
 async function saveSensorSettings() {
-    const interval = parseInt(document.getElementById('sensorInterval').value) || 5;
+    const interval = parseInt(document.getElementById('sensorInterval').value) || 5000;
+    state.config.readInterval = interval;
+    clearConfigEditingState();
     await updateSettings({ sensor_interval: interval });
 }
 
@@ -619,11 +729,13 @@ async function initializeDashboard() {
     // Initial data fetch
     showLoading(true);
     await Promise.all([
-        fetchSystemInfo(),
+        fetchSystemInfo(true),
         fetchSensorData(),
         fetchDeviceState()
     ]);
     showLoading(false);
+
+    syncConfigFormFromState();
 
     // Start polling
     startSensorPolling();

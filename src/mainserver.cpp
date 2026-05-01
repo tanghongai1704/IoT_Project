@@ -36,11 +36,18 @@ String jsonResponse(String body)
 
 void handleSystem()
 {
-  StaticJsonDocument<128> doc;
+  StaticJsonDocument<256> doc;
 
-  doc["ssid"] = SSID_AP;
+  doc["ssid"] = AP_SSID;
   doc["ip"] = WiFi.localIP().toString();
-  doc["ap_password"] = PASS_AP;
+  doc["ap_password"] = AP_PASS;
+  doc["wifi_ssid"] = WIFI_SSID;
+  doc["wifi_password"] = WIFI_PASS;
+  doc["device_token"] = CORE_IOT_TOKEN;
+  doc["mqtt_server"] = CORE_IOT_SERVER;
+  doc["mqtt_port"] = CORE_IOT_PORT.toInt();
+  doc["ap_name"] = AP_SSID;
+  doc["read_interval"] = READ_INTERVAL;
 
   String out;
   serializeJson(doc, out);
@@ -132,8 +139,14 @@ void handleControl()
     return;
   }
 
-  StaticJsonDocument<256> doc;
-  deserializeJson(doc, server.arg("plain"));
+  StaticJsonDocument<384> doc;
+  DeserializationError err = deserializeJson(doc, server.arg("plain"));
+
+  if (err)
+  {
+    server.send(400, "application/json", "{\"error\":\"json parse failed\"}");
+    return;
+  }
 
   if (doc["mode"])
     device_mode = doc["mode"].as<String>();
@@ -173,9 +186,12 @@ void handleConfig()
   WIFI_PASS = doc["password"] | "";
   CORE_IOT_TOKEN = doc["token"] | "";
   CORE_IOT_SERVER = doc["server"] | "";
-  CORE_IOT_PORT = doc["port"] | "";
+  CORE_IOT_PORT = String(doc["port"] | "");
+  AP_SSID = doc["ap_ssid"] | AP_SSID;
+  AP_PASS = doc["ap_password"] | AP_PASS;
+  READ_INTERVAL = doc["read_interval"] | READ_INTERVAL;
 
-  Save_info_File(WIFI_SSID, WIFI_PASS, CORE_IOT_TOKEN, CORE_IOT_SERVER, CORE_IOT_PORT);
+  Save_info_File(WIFI_SSID, WIFI_PASS, CORE_IOT_TOKEN, CORE_IOT_SERVER, CORE_IOT_PORT, AP_SSID, AP_PASS, READ_INTERVAL);
 
   isAPMode = false;
   connecting = true;
@@ -193,10 +209,36 @@ void handleSettingsAPI()
     return;
   }
 
-  String body = server.arg("plain");
+  StaticJsonDocument<256> doc;
+  DeserializationError err = deserializeJson(doc, server.arg("plain"));
 
-  // ví dụ update interval sensor
-  Serial.println("Settings: " + body);
+  if (err)
+  {
+    server.send(400, "application/json", "{\"error\":\"json parse failed\"}");
+    return;
+  }
+
+  if (doc["ap_ssid"])
+  {
+    AP_SSID = doc["ap_ssid"].as<String>();
+  }
+
+  if (doc["ap_password"])
+  {
+    AP_PASS = doc["ap_password"].as<String>();
+  }
+
+  if (doc["sensor_interval"])
+  {
+    READ_INTERVAL = max(1, doc["sensor_interval"].as<int>());
+  }
+
+  Save_info_File(WIFI_SSID, WIFI_PASS, CORE_IOT_TOKEN, CORE_IOT_SERVER, CORE_IOT_PORT, AP_SSID, AP_PASS, READ_INTERVAL);
+
+  Serial.println("Settings updated:");
+  Serial.println(AP_SSID);
+  Serial.println(AP_PASS);
+  Serial.println(READ_INTERVAL);
 
   server.send(200, "application/json", "{\"status\":\"updated\"}");
 }
@@ -253,8 +295,7 @@ void setupServer()
 void startAP()
 {
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(String(SSID_AP), String(PASS_AP));
-  sleep(10);
+  WiFi.softAP(AP_SSID.c_str(), AP_PASS.c_str());
   Serial.print("AP IP address: ");
   Serial.println(WiFi.softAPIP());
   isAPMode = true;

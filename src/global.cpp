@@ -8,6 +8,9 @@ String WIFI_PASS;
 String CORE_IOT_TOKEN;
 String CORE_IOT_SERVER;
 String CORE_IOT_PORT;
+String AP_SSID = SSID_AP;
+String AP_PASS = String(PASS_AP);
+int READ_INTERVAL = 5000;
 
 boolean isWifiConnected = false;
 SemaphoreHandle_t xBinarySemaphoreInternet = xSemaphoreCreateBinary();

@@ -156,8 +156,9 @@
                                 id="configSsid" placeholder="Enter WiFi SSID" class="input"></div>
                         <div class="field panel"><label for="configPassword">WiFi Password</label><input type="password"
                                 id="configPassword" placeholder="Enter WiFi password" class="input"></div>
-                        <div class="field panel"><label for="configToken">Device Token (if applicable)</label><input
-                                type="text" id="configToken" placeholder="Enter device token" class="input"></div>
+                        <div class="field panel"><label for="configToken">Device Token (not applicable for local
+                                broker)</label><input type="text" id="configToken" placeholder="Enter device token"
+                                class="input"></div>
                         <div class="field panel"><label for="configServer">MQTT Server</label><input type="text"
                                 id="configServer" placeholder="Enter server address" class="input"></div>
                         <div class="field panel"><label for="configPort">MQTT Port</label><input type="number"
@@ -201,8 +202,8 @@
                     <div class="circuit"></div>
                     <form id="sensorSettingsForm" class="panel stack narrow">
                         <div class="field"><label for="sensorInterval">Read Interval</label><input type="number"
-                                id="sensorInterval" min="1" max="60" value="5" class="input"><small
-                                class="helper">seconds</small></div>
+                                id="sensorInterval" min="1" max="60000" value="5000" class="input"><small
+                                class="helper">milliseconds</small></div>
                         <button type="button" id="sensorSettingsBtn" class="btn">Save</button>
                     </form>
                 </article>

@@ -16,17 +16,24 @@ void Load_info_File()
   }
   else
   {
-    WIFI_SSID = strdup(doc["WIFI_SSID"]);
-    WIFI_PASS = strdup(doc["WIFI_PASS"]);
-    CORE_IOT_TOKEN = strdup(doc["CORE_IOT_TOKEN"]);
-    CORE_IOT_SERVER = strdup(doc["CORE_IOT_SERVER"]);
-    CORE_IOT_PORT = strdup(doc["CORE_IOT_PORT"]);
+    WIFI_SSID = doc["WIFI_SSID"] | "";
+    WIFI_PASS = doc["WIFI_PASS"] | "";
+    CORE_IOT_TOKEN = doc["CORE_IOT_TOKEN"] | "";
+    CORE_IOT_SERVER = doc["CORE_IOT_SERVER"] | "";
+    CORE_IOT_PORT = doc["CORE_IOT_PORT"] | "";
+    AP_SSID = doc["AP_SSID"] | String(SSID_AP);
+    AP_PASS = doc["AP_PASS"] | String(PASS_AP);
+    READ_INTERVAL = doc["READ_INTERVAL"] | 5000;
+
     Serial.println("✅ Info loaded from file:");
     Serial.println(WIFI_SSID);
     Serial.println(WIFI_PASS);
     Serial.println(CORE_IOT_TOKEN);
     Serial.println(CORE_IOT_SERVER);
     Serial.println(CORE_IOT_PORT);
+    Serial.println(AP_SSID);
+    Serial.println(AP_PASS);
+    Serial.println(READ_INTERVAL);
   }
   file.close();
 }
@@ -40,7 +47,7 @@ void Delete_info_File()
   ESP.restart();
 }
 
-void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT)
+void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT, String ap_ssid, String ap_pass, int read_interval)
 {
   DynamicJsonDocument doc(4096);
   doc["WIFI_SSID"] = wifi_ssid;
@@ -48,6 +55,9 @@ void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, S
   doc["CORE_IOT_TOKEN"] = CORE_IOT_TOKEN;
   doc["CORE_IOT_SERVER"] = CORE_IOT_SERVER;
   doc["CORE_IOT_PORT"] = CORE_IOT_PORT;
+  doc["AP_SSID"] = ap_ssid;
+  doc["AP_PASS"] = ap_pass;
+  doc["READ_INTERVAL"] = read_interval;
 
   File configFile = LittleFS.open("/info.dat", "w");
   if (configFile)
@@ -57,7 +67,7 @@ void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, S
   }
   else
   {
-    Serial.println('Unable to save the configuration.');
+    Serial.println("Unable to save the configuration.");
   }
   // ESP.restart();
 };
