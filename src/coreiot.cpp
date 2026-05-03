@@ -1,29 +1,50 @@
 #include "coreiot.h"
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+static WiFiClient espClient;
+static PubSubClient client(espClient);
+static const char device_id[] = "ESP32_002";
+static String topic_rpc = String("devices/") + device_id + "/rpc";
+static String topic_telemetry = String("devices/") + device_id + "/telemetry";
 
-String device_id = "ESP32_002";
-String topic_rpc = "devices/" + device_id + "/rpc";
-String topic_telemetry = "devices/" + device_id + "/telemetry";
+static String getCoreIotServerUrl()
+{
+    String serverUrl;
+    if (takeSystemContext(portMAX_DELAY))
+    {
+        serverUrl = systemContext.core_iot_server;
+        giveSystemContext();
+    }
+    return serverUrl;
+}
+
+static String getCoreIotPort()
+{
+    String portString;
+    if (takeSystemContext(portMAX_DELAY))
+    {
+        portString = systemContext.core_iot_port;
+        giveSystemContext();
+    }
+    return portString;
+}
 
 void reconnect()
 {
-    // Loop until we're reconnected
     while (!client.connected())
     {
+        const String serverUrl = getCoreIotServerUrl();
+        const String portString = getCoreIotPort();
+
         Serial.print("Infomation debuffing: ");
         Serial.print("Device ID: ");
         Serial.println(device_id);
         Serial.print("MQTT Server: ");
-        Serial.print(CORE_IOT_SERVER);
+        Serial.print(serverUrl);
         Serial.print("MQTT Port: ");
-        Serial.println(CORE_IOT_PORT);
+        Serial.println(portString);
         Serial.print("Attempting MQTT connection...");
-        // Attempt to connect (username=token, password=empty)
-        Serial.print("Connecting to CoreIOT Server... with token: ");
-        Serial.println(CORE_IOT_TOKEN);
-        if (client.connect(device_id.c_str()))
+
+        if (client.connect(device_id))
         {
             Serial.println("connected to CoreIOT Server!");
             client.subscribe(topic_rpc.c_str());
@@ -45,17 +66,14 @@ void callback(char *topic, byte *payload, unsigned int length)
     Serial.print(topic);
     Serial.println("] ");
 
-    // Allocate a temporary buffer for the message
     char message[length + 1];
     memcpy(message, payload, length);
     message[length] = '\0';
     Serial.print("Payload: ");
     Serial.println(message);
 
-    // Parse JSON
     StaticJsonDocument<256> doc;
     DeserializationError error = deserializeJson(doc, message);
-
     if (error)
     {
         Serial.print("deserializeJson() failed: ");
@@ -66,22 +84,21 @@ void callback(char *topic, byte *payload, unsigned int length)
     const char *method = doc["method"] | "";
     if (strcmp(method, "POWER") == 0)
     {
-        device_mode = "MANUAL";
-        // Check params type (could be boolean, int, or string according to your RPC)
-        // Example: {"method": "setValueLED", "params": "ON"}
         const char *params = doc["params"] | "";
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            systemContext.device_mode = "MANUAL";
+            systemContext.led_state = (strcmp(params, "ON") == 0);
+            giveSystemContext();
+        }
 
         if (strcmp(params, "ON") == 0)
         {
             Serial.println("Device turned ON.");
-            // TODO: Implement LED ON logic
-            led_state = true;
         }
         else
         {
             Serial.println("Device turned OFF.");
-            // TODO: Implement LED OFF logic
-            led_state = false;
         }
     }
     else
@@ -93,61 +110,61 @@ void callback(char *topic, byte *payload, unsigned int length)
 
 void setup_coreiot()
 {
-
-    // Serial.print("Connecting to WiFi...");
-    // WiFi.begin(wifi_ssid, wifi_password);
-    // while (WiFi.status() != WL_CONNECTED) {
-
-    // while (isWifiConnected == false) {
-    //   delay(500);
-    //   Serial.print(".");
-    // }
-
-    while (1)
+    Serial.println("Waiting for internet access before CoreIOT startup...");
+    if (xSemaphoreTake(systemContext.internet_semaphore, portMAX_DELAY) == pdTRUE)
     {
-        if (xSemaphoreTake(xBinarySemaphoreInternet, portMAX_DELAY))
-        {
-            Serial.println("✅ Internet access granted to CoreIOT Task.");
-            break;
-        }
-        delay(500);
-        Serial.print(".........................");
+        Serial.println("✅ Internet access granted to CoreIOT Task.");
+    }
+
+    String serverUrl;
+    String portString;
+    if (takeSystemContext(portMAX_DELAY))
+    {
+        serverUrl = systemContext.core_iot_server;
+        portString = systemContext.core_iot_port;
+        giveSystemContext();
     }
 
     Serial.println("Connected to WiFi! Now connecting to CoreIOT Server...");
-
     Serial.print("Connecting to CoreIOT Server: ");
-    Serial.print(CORE_IOT_SERVER);
+    Serial.print(serverUrl);
     Serial.print(" on port ");
-    Serial.println(CORE_IOT_PORT);
-    client.setServer(CORE_IOT_SERVER.c_str(), CORE_IOT_PORT.toInt());
+    Serial.println(portString);
+
+    client.setServer(serverUrl.c_str(), portString.toInt());
     client.setCallback(callback);
 }
 
 void coreiot_task(void *pvParameters)
 {
-    // WIFI_SSID = "DUY AN";
-    // WIFI_PASS = "DUYAN2019";
-    // CORE_IOT_TOKEN = "";
-    // CORE_IOT_SERVER = "127.0.0.1";
-    // CORE_IOT_PORT = "1884";
     setup_coreiot();
 
     while (1)
     {
-
         if (!client.connected())
         {
             reconnect();
         }
         client.loop();
 
-        // Sample payload, publish to 'v1/devices/me/telemetry'
-        String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(glob_temperature) + ",\"humidity\":" + String(glob_humidity) + ",\"humidex\":" + String(glob_humidex) + ",\"weather_status\":\"" + get_weather_label(glob_weather_status) + "\"}";
+        float temperature = 0;
+        float humidity = 0;
+        float humidex = 0;
+        int weather_status = 0;
+
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            temperature = systemContext.temperature;
+            humidity = systemContext.humidity;
+            humidex = systemContext.humidex;
+            weather_status = systemContext.weather_status;
+            giveSystemContext();
+        }
+
+        String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"humidex\":" + String(humidex) + ",\"weather_status\":\"" + get_weather_label(weather_status) + "\"}";
 
         client.publish(topic_telemetry.c_str(), payload.c_str());
-
         Serial.println("Published payload: " + payload);
-        vTaskDelay(10000); // Publish every 10 seconds
+        vTaskDelay(10000);
     }
 }

@@ -1,6 +1,5 @@
 #include "tinyml.h"
 
-// Globals
 namespace
 {
     tflite::ErrorReporter *error_reporter = nullptr;
@@ -13,39 +12,31 @@ namespace
     uint8_t tensor_arena[kTensorArenaSize];
 }
 
-// ===== NORMALIZATION (từ Python) =====
 #define TEMP_MEAN 25.0780196
 #define TEMP_STD 4.29019663
-
 #define HUM_MEAN 76.77308542
 #define HUM_STD 11.34869143
 
-// ===== FLOAT → INT8 =====
 int8_t float_to_int8(float value, float scale, int zero_point)
 {
     int32_t result = (int32_t)(value / scale + zero_point);
-
     if (result > 127)
         result = 127;
     if (result < -128)
         result = -128;
-
     return (int8_t)result;
 }
 
-// ===== INT8 → FLOAT (OUTPUT) =====
 float get_output_value(TfLiteTensor *output, int i)
 {
     int8_t val = output->data.int8[i];
     return (val - output->params.zero_point) * output->params.scale;
 }
 
-// ===== ARGMAX =====
 int get_predicted_class(TfLiteTensor *output)
 {
     int predicted = 0;
     float max_val = get_output_value(output, 0);
-
     for (int i = 1; i < 4; i++)
     {
         float val = get_output_value(output, i);
@@ -58,16 +49,13 @@ int get_predicted_class(TfLiteTensor *output)
     return predicted;
 }
 
-// ===== SETUP =====
 void setupTinyML()
 {
     Serial.println("TensorFlow Lite Init...");
-
     static tflite::MicroErrorReporter micro_error_reporter;
     error_reporter = &micro_error_reporter;
 
     model = tflite::GetModel(dht_weather_prediction_model_tflite);
-
     if (model->version() != TFLITE_SCHEMA_VERSION)
     {
         error_reporter->Report("Model schema mismatch!");
@@ -75,12 +63,10 @@ void setupTinyML()
     }
 
     static tflite::AllOpsResolver resolver;
-
     static tflite::MicroInterpreter static_interpreter(
         model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
 
     interpreter = &static_interpreter;
-
     if (interpreter->AllocateTensors() != kTfLiteOk)
     {
         error_reporter->Report("AllocateTensors() failed");
@@ -90,17 +76,13 @@ void setupTinyML()
     input = interpreter->input(0);
     output = interpreter->output(0);
 
-    // Debug quantization info
     Serial.print("Input scale: ");
     Serial.println(input->params.scale);
-
     Serial.print("Input zero_point: ");
     Serial.println(input->params.zero_point);
-
     Serial.println("TinyML ready.");
 }
 
-// ===== TASK =====
 void tiny_ml_task(void *pvParameters)
 {
     setupTinyML();
@@ -114,19 +96,22 @@ void tiny_ml_task(void *pvParameters)
             continue;
         }
 
-        // ===== RAW SENSOR =====
-        float temp = glob_temperature;
-        float hum = glob_humidity;
+        float temp = 0;
+        float hum = 0;
 
-        // ===== NORMALIZE =====
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            temp = systemContext.temperature;
+            hum = systemContext.humidity;
+            giveSystemContext();
+        }
+
         float temp_norm = (temp - TEMP_MEAN) / TEMP_STD;
         float hum_norm = (hum - HUM_MEAN) / HUM_STD;
 
-        // ===== INT8 INPUT =====
         input->data.int8[0] = float_to_int8(temp_norm, input->params.scale, input->params.zero_point);
         input->data.int8[1] = float_to_int8(hum_norm, input->params.scale, input->params.zero_point);
 
-        // ===== INFERENCE =====
         if (interpreter->Invoke() != kTfLiteOk)
         {
             error_reporter->Report("Invoke failed");
@@ -134,11 +119,13 @@ void tiny_ml_task(void *pvParameters)
             continue;
         }
 
-        // ===== RESULT =====
         int predicted = get_predicted_class(output);
-        glob_weather_status = predicted;
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            systemContext.weather_status = predicted;
+            giveSystemContext();
+        }
 
-        // ===== DEBUG =====
         Serial.print("Temp: ");
         Serial.print(temp);
         Serial.print(" | Hum: ");
@@ -156,7 +143,6 @@ void tiny_ml_task(void *pvParameters)
         Serial.print(predicted);
         Serial.print(" => ");
         Serial.println(get_weather_label(predicted));
-
         Serial.println("----------------------");
 
         vTaskDelay(5000);

@@ -1,8 +1,7 @@
 #include "neo_blinky.h"
 #include "global.h"
 
-// clamp
-float clampf(float v, float a, float b)
+static float clampf(float v, float a, float b)
 {
     if (v < a)
         return a;
@@ -11,7 +10,7 @@ float clampf(float v, float a, float b)
     return v;
 }
 
-uint32_t getColor(Adafruit_NeoPixel &strip, int r, int g, int b, float brightness)
+static uint32_t getColor(Adafruit_NeoPixel &strip, int r, int g, int b, float brightness)
 {
     r = (int)(r * brightness);
     g = (int)(g * brightness);
@@ -22,34 +21,41 @@ uint32_t getColor(Adafruit_NeoPixel &strip, int r, int g, int b, float brightnes
 void neo_blinky(void *pvParameters)
 {
     Adafruit_NeoPixel strip(LED_COUNT, NEO_PIN, NEO_GRB + NEO_KHZ800);
-
     strip.begin();
     strip.clear();
     strip.show();
 
     while (1)
     {
-        // =========================
-        // ===== MANUAL MODE =======
-        // =========================
-        if (device_mode == "MANUAL")
+        String mode;
+        int neo_r = 0;
+        int neo_g = 0;
+        int neo_b = 0;
+        int neo_brightness = 0;
+        float humidity = 0;
+
+        if (takeSystemContext(portMAX_DELAY))
         {
-            float B = clampf(neo_brightness / 255.0f, 0.0, 1.0);
+            mode = systemContext.device_mode;
+            neo_r = systemContext.neo_r;
+            neo_g = systemContext.neo_g;
+            neo_b = systemContext.neo_b;
+            neo_brightness = systemContext.neo_brightness;
+            humidity = systemContext.humidity;
+            giveSystemContext();
+        }
 
-            uint32_t color = getColor(strip, neo_r, neo_g, neo_b, B);
-
+        if (mode == "MANUAL")
+        {
+            float brightness = clampf(neo_brightness / 255.0f, 0.0, 1.0);
+            uint32_t color = getColor(strip, neo_r, neo_g, neo_b, brightness);
             strip.setPixelColor(0, color);
             strip.show();
-
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
-        // =========================
-        // ===== AUTO MODE =========
-        // =========================
-        float H = glob_humidity;
-
+        float H = humidity;
         int r = 0, g = 0, b = 0;
         float T = 1000;
         float B = 0.5;
@@ -83,7 +89,6 @@ void neo_blinky(void *pvParameters)
         B = clampf(B, 0.1, 1.0);
 
         uint32_t color = getColor(strip, r, g, b, B);
-
         int half = T / 2;
 
         strip.setPixelColor(0, color);

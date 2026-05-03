@@ -1,29 +1,47 @@
 #include "global.h"
-float glob_temperature = 0;
-float glob_humidity = 0;
-float glob_humidex = 0;
-int glob_weather_status = 0;
 
-String WIFI_SSID;
-String WIFI_PASS;
-String CORE_IOT_TOKEN;
-String CORE_IOT_SERVER;
-String CORE_IOT_PORT;
-String AP_SSID = SSID_AP;
-String AP_PASS = String(PASS_AP);
-int READ_INTERVAL = 5000;
+SystemContext systemContext;
 
-boolean isWifiConnected = false;
-SemaphoreHandle_t xBinarySemaphoreInternet = xSemaphoreCreateBinary();
+static StaticSemaphore_t xContextMutexBuffer;
+static StaticSemaphore_t xInternetSemaphoreBuffer;
 
-bool led_state = false;
+void initSystemContext()
+{
+    systemContext.temperature = 0;
+    systemContext.humidity = 0;
+    systemContext.humidex = 0;
+    systemContext.weather_status = 0;
 
-String device_mode = "AUTO";
+    systemContext.wifi_ssid = "";
+    systemContext.wifi_pass = "";
+    systemContext.core_iot_token = "";
+    systemContext.core_iot_server = "";
+    systemContext.core_iot_port = "";
+    systemContext.ap_ssid = SSID_AP;
+    systemContext.ap_pass = String(PASS_AP);
+    systemContext.read_interval = 5000;
 
-int neo_r = 255;
-int neo_g = 107;
-int neo_b = 107;
-int neo_brightness = 120;
+    systemContext.is_wifi_connected = false;
+    systemContext.led_state = false;
+    systemContext.device_mode = "AUTO";
+
+    systemContext.neo_r = 255;
+    systemContext.neo_g = 107;
+    systemContext.neo_b = 107;
+    systemContext.neo_brightness = 120;
+
+    systemContext.mutex = xSemaphoreCreateMutexStatic(&xContextMutexBuffer);
+    systemContext.internet_semaphore = xSemaphoreCreateBinaryStatic(&xInternetSemaphoreBuffer);
+
+    if (systemContext.mutex == NULL || systemContext.internet_semaphore == NULL)
+    {
+        Serial.println("❌ System context initialization failed");
+        while (true)
+        {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+}
 
 // ===== LABEL =====
 const char *get_weather_label(int label)

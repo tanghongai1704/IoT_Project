@@ -1,11 +1,9 @@
 #include "led_blinky.h"
 
-// ===== CONFIG =====
 #define T_COLD_MAX 25
 #define T_HOT_MIN 32
 
-// clamp helper
-int clamp(int val, int minVal, int maxVal)
+static int clamp(int val, int minVal, int maxVal)
 {
   if (val < minVal)
     return minVal;
@@ -20,20 +18,26 @@ void led_blinky(void *pvParameters)
 
   while (1)
   {
-    // =========================
-    // ===== MANUAL MODE =======
-    // =========================
-    if (device_mode == "MANUAL")
+    String mode;
+    bool led_state = false;
+    float temperature = 0;
+
+    if (takeSystemContext(portMAX_DELAY))
+    {
+      mode = systemContext.device_mode;
+      led_state = systemContext.led_state;
+      temperature = systemContext.temperature;
+      giveSystemContext();
+    }
+
+    if (mode == "MANUAL")
     {
       digitalWrite(LED_GPIO, led_state ? HIGH : LOW);
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
 
-    // =========================
-    // ===== AUTO MODE =========
-    // =========================
-    float T = glob_temperature;
+    float T = temperature;
 
     if (T < T_COLD_MAX)
     {
@@ -43,7 +47,6 @@ void led_blinky(void *pvParameters)
 
       digitalWrite(LED_GPIO, HIGH);
       vTaskDelay(pdMS_TO_TICKS(t_on));
-
       digitalWrite(LED_GPIO, LOW);
       vTaskDelay(pdMS_TO_TICKS(t_off));
     }
@@ -56,13 +59,10 @@ void led_blinky(void *pvParameters)
 
       digitalWrite(LED_GPIO, HIGH);
       vTaskDelay(pdMS_TO_TICKS(t_on));
-
       digitalWrite(LED_GPIO, LOW);
       vTaskDelay(pdMS_TO_TICKS(t_gap));
-
       digitalWrite(LED_GPIO, HIGH);
       vTaskDelay(pdMS_TO_TICKS(t_on));
-
       digitalWrite(LED_GPIO, LOW);
       vTaskDelay(pdMS_TO_TICKS(t_rest));
     }
@@ -78,7 +78,6 @@ void led_blinky(void *pvParameters)
       {
         digitalWrite(LED_GPIO, HIGH);
         vTaskDelay(pdMS_TO_TICKS(t_blink));
-
         digitalWrite(LED_GPIO, LOW);
         vTaskDelay(pdMS_TO_TICKS(t_blink));
       }

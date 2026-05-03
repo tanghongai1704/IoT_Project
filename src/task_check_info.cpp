@@ -8,6 +8,7 @@ void Load_info_File()
   {
     return;
   }
+
   DynamicJsonDocument doc(4096);
   DeserializationError error = deserializeJson(doc, file);
   if (error)
@@ -16,24 +17,28 @@ void Load_info_File()
   }
   else
   {
-    WIFI_SSID = doc["WIFI_SSID"] | "";
-    WIFI_PASS = doc["WIFI_PASS"] | "";
-    CORE_IOT_TOKEN = doc["CORE_IOT_TOKEN"] | "";
-    CORE_IOT_SERVER = doc["CORE_IOT_SERVER"] | "";
-    CORE_IOT_PORT = doc["CORE_IOT_PORT"] | "";
-    AP_SSID = doc["AP_SSID"] | String(SSID_AP);
-    AP_PASS = doc["AP_PASS"] | String(PASS_AP);
-    READ_INTERVAL = doc["READ_INTERVAL"] | 5000;
+    if (takeSystemContext(portMAX_DELAY))
+    {
+      systemContext.wifi_ssid = doc["WIFI_SSID"] | "";
+      systemContext.wifi_pass = doc["WIFI_PASS"] | "";
+      systemContext.core_iot_token = doc["CORE_IOT_TOKEN"] | "";
+      systemContext.core_iot_server = doc["CORE_IOT_SERVER"] | "";
+      systemContext.core_iot_port = doc["CORE_IOT_PORT"] | "";
+      systemContext.ap_ssid = doc["AP_SSID"] | String(SSID_AP);
+      systemContext.ap_pass = doc["AP_PASS"] | String(PASS_AP);
+      systemContext.read_interval = doc["READ_INTERVAL"] | 5000;
+      giveSystemContext();
+    }
 
     Serial.println("✅ Info loaded from file:");
-    Serial.println(WIFI_SSID);
-    Serial.println(WIFI_PASS);
-    Serial.println(CORE_IOT_TOKEN);
-    Serial.println(CORE_IOT_SERVER);
-    Serial.println(CORE_IOT_PORT);
-    Serial.println(AP_SSID);
-    Serial.println(AP_PASS);
-    Serial.println(READ_INTERVAL);
+    Serial.println(systemContext.wifi_ssid);
+    Serial.println(systemContext.wifi_pass);
+    Serial.println(systemContext.core_iot_token);
+    Serial.println(systemContext.core_iot_server);
+    Serial.println(systemContext.core_iot_port);
+    Serial.println(systemContext.ap_ssid);
+    Serial.println(systemContext.ap_pass);
+    Serial.println(systemContext.read_interval);
   }
   file.close();
 }
@@ -69,8 +74,7 @@ void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, S
   {
     Serial.println("Unable to save the configuration.");
   }
-  // ESP.restart();
-};
+}
 
 bool check_info_File(bool check)
 {
@@ -84,7 +88,16 @@ bool check_info_File(bool check)
     Load_info_File();
   }
 
-  if (WIFI_SSID.isEmpty() && WIFI_PASS.isEmpty())
+  String wifi_ssid;
+  String wifi_pass;
+  if (takeSystemContext(portMAX_DELAY))
+  {
+    wifi_ssid = systemContext.wifi_ssid;
+    wifi_pass = systemContext.wifi_pass;
+    giveSystemContext();
+  }
+
+  if (wifi_ssid.isEmpty() && wifi_pass.isEmpty())
   {
     if (!check)
     {
