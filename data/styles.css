@@ -266,6 +266,43 @@ svg {
     grid-template-columns: repeat(3, minmax(0, 1fr))
 }
 
+.weather-center {
+    text-align: center;
+}
+
+.weather-center .metric-row {
+    justify-content: center;
+}
+
+.weather-value {
+    font-size: 32px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    transition: all 0.3s ease;
+}
+
+/* Màu theo weather */
+.text-sunny {
+    color: #facc15;
+}
+
+/* vàng */
+.text-cloudy {
+    color: #9ca3af;
+}
+
+/* xám */
+.text-rain {
+    color: #38bdf8;
+}
+
+/* xanh */
+.text-storm {
+    color: #f87171;
+}
+
+/* đỏ */
+
 .panel {
     padding: .95rem;
     border-radius: var(--radius-sm)

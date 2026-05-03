@@ -99,6 +99,7 @@ void handleSensorsAPI()
   doc["state_temp"] = getTempState(t);
   doc["state_hum"] = getHumState(h);
   doc["comfort"] = getComfort(hx);
+  doc["weather"] = get_weather_label(glob_weather_status);
 
   String out;
   serializeJson(doc, out);
@@ -186,10 +187,13 @@ void handleConfig()
   WIFI_PASS = doc["password"] | "";
   CORE_IOT_TOKEN = doc["token"] | "";
   CORE_IOT_SERVER = doc["server"] | "";
-  CORE_IOT_PORT = String(doc["port"] | "");
+  int port = doc["port"] | 1883;
+  CORE_IOT_PORT = String(port);
   AP_SSID = doc["ap_ssid"] | AP_SSID;
   AP_PASS = doc["ap_password"] | AP_PASS;
   READ_INTERVAL = doc["read_interval"] | READ_INTERVAL;
+
+  Serial.println("Configuration updated:");
 
   Save_info_File(WIFI_SSID, WIFI_PASS, CORE_IOT_TOKEN, CORE_IOT_SERVER, CORE_IOT_PORT, AP_SSID, AP_PASS, READ_INTERVAL);
 

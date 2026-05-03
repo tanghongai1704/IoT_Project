@@ -67,19 +67,27 @@
                             <div class="metric-row">
                                 <div id="sensorTemp" class="metric-value">--</div><span class="metric-unit">°C</span>
                             </div>
-                            <div id="sensorTempState" class="sensor-state state-normal">Normal</div>
+                            <div id="sensorTempState" class="sensor-state state-normal">NORMAL</div>
                         </div>
                         <div class="metric panel"><label>Humidity</label>
                             <div class="metric-row">
                                 <div id="sensorHum" class="metric-value">--</div><span class="metric-unit">%</span>
                             </div>
-                            <div id="sensorHumState" class="sensor-state state-comfort">Comfort</div>
+                            <div id="sensorHumState" class="sensor-state state-comfort">COMFORT</div>
                         </div>
                         <div class="metric panel"><label>Humidex</label>
                             <div class="metric-row">
                                 <div id="sensorHumidex" class="metric-value">--</div>
                             </div>
-                            <div id="sensorComfort" class="sensor-state state-easy">Neutral</div>
+                            <div id="sensorComfort" class="sensor-state state-easy">EASY</div>
+                        </div>
+                    </div>
+                    <div style="height: 30px;"></div>
+                    <div class="metric panel weather-center">
+                        <label>Weather Status</label>
+                        <div style="height: 10px;"></div>
+                        <div class="metric-row">
+                            <div id="sensorWeather" class="weather-value">UNKNOWN</div>
                         </div>
                     </div>
                     <div class="circuit"></div>

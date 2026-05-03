@@ -34,7 +34,8 @@ const state = {
         humidex: 0,
         stateTemp: 'NORMAL',
         stateHum: 'COMFORT',
-        comfort: 'EASY'
+        comfort: 'EASY',
+        weather: 'SUNNY'
     },
     devices: {
         mode: 'AUTO',
@@ -143,7 +144,8 @@ async function fetchSensorData() {
             humidex: parseFloat(result.data.humidex) || 0,
             stateTemp: result.data.state_temp || 'NORMAL',
             stateHum: result.data.state_hum || 'COMFORT',
-            comfort: result.data.comfort || 'EASY'
+            comfort: result.data.comfort || 'EASY',
+            weather: result.data.weather || 'SUNNY'
         };
         updateSensorUI();
     }
@@ -316,6 +318,8 @@ function updateSensorUI() {
     document.getElementById('sensorComfort').textContent = state.sensors.comfort;
     document.getElementById('sensorComfort').className = `sensor-state state-${state.sensors.comfort.toLowerCase()}`;
 
+    updateWeatherUI(state.sensors.weather);
+
     // Update comfort recommendation
     updateComfortRecommendation();
 
@@ -336,6 +340,29 @@ function updateComfortRecommendation() {
 
     const comfort = state.sensors.comfort || 'EASY';
     document.getElementById('comfortRecommendation').textContent = recommendations[comfort] || recommendations['EASY'];
+}
+
+function getWeatherClass(weather) {
+    switch (weather.toLowerCase()) {
+        case "sunny": return "text-sunny";
+        case "cloudy": return "text-cloudy";
+        case "rain": return "text-rain";
+        case "storm": return "text-storm";
+        default: return "";
+    }
+}
+
+function updateWeatherUI(weather) {
+    const el = document.getElementById("sensorWeather");
+
+    // Set text
+    el.innerText = weather.toUpperCase();
+
+    // Reset class
+    el.className = "weather-value";
+
+    // Add màu
+    el.classList.add(getWeatherClass(weather));
 }
 
 /**

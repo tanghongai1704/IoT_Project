@@ -2,6 +2,7 @@
 float glob_temperature = 0;
 float glob_humidity = 0;
 float glob_humidex = 0;
+int glob_weather_status = 0;
 
 String WIFI_SSID;
 String WIFI_PASS;
@@ -23,3 +24,21 @@ int neo_r = 255;
 int neo_g = 107;
 int neo_b = 107;
 int neo_brightness = 120;
+
+// ===== LABEL =====
+const char *get_weather_label(int label)
+{
+    switch (label)
+    {
+    case 0:
+        return "Sunny";
+    case 1:
+        return "Cloudy";
+    case 2:
+        return "Rain";
+    case 3:
+        return "Storm";
+    default:
+        return "Unknown";
+    }
+}

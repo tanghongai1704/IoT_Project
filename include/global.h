@@ -9,7 +9,7 @@
 extern float glob_temperature;
 extern float glob_humidity;
 extern float glob_humidex;
-extern int READ_INTERVAL;
+extern int glob_weather_status; // 0: Sunny, 1: Cloudy, 2: Rainy, 3: Stormy
 
 extern String WIFI_SSID;
 extern String WIFI_PASS;
@@ -18,6 +18,7 @@ extern String CORE_IOT_SERVER;
 extern String CORE_IOT_PORT;
 extern String AP_SSID;
 extern String AP_PASS;
+extern int READ_INTERVAL;
 
 extern boolean isWifiConnected;
 extern SemaphoreHandle_t xBinarySemaphoreInternet;
@@ -32,5 +33,8 @@ extern int neo_r;
 extern int neo_g;
 extern int neo_b;
 extern int neo_brightness;
+
+// ===== LABEL =====
+const char *get_weather_label(int label);
 
 #endif
