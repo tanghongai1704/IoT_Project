@@ -16,6 +16,175 @@ static bool connecting = false;
 static DNSServer dnsServer;
 const byte DNS_PORT = 53;
 
+struct GPIOConfig
+{
+  int pin;
+  String mode;
+  int value;
+};
+
+// static const int ALLOWED_GPIO_PINS[] = {2, 4, 5, 12, 13, 14, 15, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
+static const int ALLOWED_GPIO_PINS[] = {
+    1, 2, 4, 5, 6, 7, 8, 9,
+    10, 11, 12, 13, 14, 15, 16, 17,
+    18, 21, 33, 34, 35, 36, 37, 38,
+    39, 40, 41, 42, 43, 44, 45, 47, 48};
+static const int ALLOWED_GPIO_PIN_COUNT = sizeof(ALLOWED_GPIO_PINS) / sizeof(ALLOWED_GPIO_PINS[0]);
+static const int GPIO_MAX_CONFIGS = ALLOWED_GPIO_PIN_COUNT;
+static const int PWM_CHANNEL_COUNT = 8;
+static const int PWM_FREQ = 5000;
+static const int PWM_RESOLUTION = 8;
+
+static GPIOConfig gpioConfigs[GPIO_MAX_CONFIGS];
+static int gpioConfigCount = 0;
+static int pwmPinMap[PWM_CHANNEL_COUNT];
+static bool gpioRuntimeInitialized = false;
+
+bool isAllowedGPIOPin(int pin)
+{
+  for (int i = 0; i < ALLOWED_GPIO_PIN_COUNT; ++i)
+  {
+    if (ALLOWED_GPIO_PINS[i] == pin)
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+int findGPIOConfigIndex(int pin)
+{
+  for (int i = 0; i < gpioConfigCount; ++i)
+  {
+    if (gpioConfigs[i].pin == pin)
+    {
+      return i;
+    }
+  }
+  return -1;
+}
+
+void releasePWMChannelForPin(int pin)
+{
+  for (int channel = 0; channel < PWM_CHANNEL_COUNT; ++channel)
+  {
+    if (pwmPinMap[channel] == pin)
+    {
+      ledcDetachPin(pin);
+      pwmPinMap[channel] = -1;
+      return;
+    }
+  }
+}
+
+int getOrAssignPWMChannel(int pin)
+{
+  for (int channel = 0; channel < PWM_CHANNEL_COUNT; ++channel)
+  {
+    if (pwmPinMap[channel] == pin)
+    {
+      return channel;
+    }
+  }
+
+  for (int channel = 0; channel < PWM_CHANNEL_COUNT; ++channel)
+  {
+    if (pwmPinMap[channel] == -1)
+    {
+      pwmPinMap[channel] = pin;
+      return channel;
+    }
+  }
+
+  return -1;
+}
+
+bool upsertGPIOConfig(int pin, const String &mode, int value, String &error)
+{
+  if (!isAllowedGPIOPin(pin))
+  {
+    error = "invalid pin";
+    return false;
+  }
+
+  String normalizedMode = mode;
+  normalizedMode.toUpperCase();
+
+  int normalizedValue = value;
+
+  if (normalizedMode == "INPUT")
+  {
+    releasePWMChannelForPin(pin);
+    pinMode(pin, INPUT);
+    normalizedValue = digitalRead(pin);
+  }
+  else if (normalizedMode == "OUTPUT")
+  {
+    releasePWMChannelForPin(pin);
+    pinMode(pin, OUTPUT);
+    normalizedValue = value > 0 ? HIGH : LOW;
+    digitalWrite(pin, normalizedValue);
+  }
+  else if (normalizedMode == "PWM")
+  {
+    normalizedValue = constrain(value, 0, 255);
+
+    int channel = getOrAssignPWMChannel(pin);
+    if (channel < 0)
+    {
+      error = "no free pwm channel";
+      return false;
+    }
+
+    pinMode(pin, OUTPUT);
+    ledcSetup(channel, PWM_FREQ, PWM_RESOLUTION);
+    ledcAttachPin(pin, channel);
+    ledcWrite(channel, normalizedValue);
+  }
+  else
+  {
+    error = "invalid mode";
+    return false;
+  }
+
+  int index = findGPIOConfigIndex(pin);
+  if (index < 0)
+  {
+    if (gpioConfigCount >= GPIO_MAX_CONFIGS)
+    {
+      error = "gpio config full";
+      return false;
+    }
+
+    index = gpioConfigCount++;
+    gpioConfigs[index].pin = pin;
+  }
+
+  gpioConfigs[index].mode = normalizedMode;
+  gpioConfigs[index].value = normalizedValue;
+  return true;
+}
+
+bool removeGPIOConfig(int pin)
+{
+  int index = findGPIOConfigIndex(pin);
+  if (index < 0)
+  {
+    return false;
+  }
+
+  releasePWMChannelForPin(pin);
+  pinMode(pin, INPUT);
+
+  for (int i = index; i < gpioConfigCount - 1; ++i)
+  {
+    gpioConfigs[i] = gpioConfigs[i + 1];
+  }
+  --gpioConfigCount;
+
+  return true;
+}
+
 // ========== Handlers ==========
 void handleRoot()
 {
@@ -416,6 +585,130 @@ void handleReset()
   ESP.restart();
 }
 
+void handleGPIOGet()
+{
+  StaticJsonDocument<1536> doc;
+  JsonArray pins = doc.createNestedArray("pins");
+
+  for (int i = 0; i < gpioConfigCount; ++i)
+  {
+    if (gpioConfigs[i].mode == "INPUT")
+    {
+      gpioConfigs[i].value = digitalRead(gpioConfigs[i].pin);
+    }
+
+    JsonObject item = pins.createNestedObject();
+    item["pin"] = gpioConfigs[i].pin;
+    item["mode"] = gpioConfigs[i].mode;
+    item["value"] = gpioConfigs[i].value;
+  }
+
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
+void handleGPIOPost()
+{
+  if (!server.hasArg("plain"))
+  {
+    server.send(400, "application/json", "{\"error\":\"no body\"}");
+    return;
+  }
+
+  StaticJsonDocument<512> doc;
+  DeserializationError err = deserializeJson(doc, server.arg("plain"));
+  if (err)
+  {
+    server.send(400, "application/json", "{\"error\":\"json parse failed\"}");
+    return;
+  }
+
+  if (!doc["pin"].is<int>())
+  {
+    server.send(400, "application/json", "{\"error\":\"pin required\"}");
+    return;
+  }
+
+  int pin = doc["pin"].as<int>();
+
+  if (!isAllowedGPIOPin(pin))
+  {
+    server.send(400, "application/json", "{\"error\":\"invalid pin\"}");
+    return;
+  }
+
+  if (doc["remove"].is<bool>() && doc["remove"].as<bool>())
+  {
+    if (!removeGPIOConfig(pin))
+    {
+      server.send(404, "application/json", "{\"error\":\"pin not configured\"}");
+      return;
+    }
+
+    server.send(200, "application/json", "{\"status\":\"removed\"}");
+    return;
+  }
+
+  String mode = doc["mode"] | "";
+  int value = doc["value"] | 0;
+
+  String error;
+  if (!upsertGPIOConfig(pin, mode, value, error))
+  {
+    String out = "{\"error\":\"" + error + "\"}";
+    server.send(400, "application/json", out);
+    return;
+  }
+
+  int index = findGPIOConfigIndex(pin);
+
+  StaticJsonDocument<256> outDoc;
+  outDoc["status"] = "ok";
+  outDoc["pin"] = pin;
+  outDoc["mode"] = gpioConfigs[index].mode;
+  outDoc["value"] = gpioConfigs[index].value;
+
+  String out;
+  serializeJson(outDoc, out);
+  server.send(200, "application/json", out);
+}
+
+void handleScanWiFi()
+{
+  int n = WiFi.scanNetworks();
+
+  DynamicJsonDocument doc(4096);
+
+  JsonArray arr = doc.to<JsonArray>();
+
+  for (int i = 0; i < n; i++)
+  {
+    JsonObject obj =
+        arr.createNestedObject();
+
+    obj["ssid"] =
+        WiFi.SSID(i);
+
+    obj["rssi"] =
+        WiFi.RSSI(i);
+
+    obj["open"] =
+        (WiFi.encryptionType(i) == WIFI_AUTH_OPEN);
+  }
+
+  String response;
+
+  serializeJson(arr, response);
+
+  server.send(
+      200,
+      "application/json",
+      response);
+
+  WiFi.scanDelete();
+}
+
 bool serveFile(const char *path, const char *type)
 {
   if (!LittleFS.exists(path))
@@ -439,6 +732,15 @@ bool serveFile(const char *path, const char *type)
 // ========== WiFi ==========
 void setupServer()
 {
+  if (!gpioRuntimeInitialized)
+  {
+    for (int i = 0; i < PWM_CHANNEL_COUNT; ++i)
+    {
+      pwmPinMap[i] = -1;
+    }
+    gpioRuntimeInitialized = true;
+  }
+
   server.on("/", HTTP_GET, handleRoot);
 
   server.on("/script.js", HTTP_GET, handleJS);
@@ -453,7 +755,9 @@ void setupServer()
   server.on("/api/settings", HTTP_POST, handleSettingsAPI);
   server.on("/api/reset", HTTP_POST, handleReset);
   server.on("/api/diagnostics", HTTP_GET, handleDiagnostics);
-
+  server.on("/api/gpio", HTTP_GET, handleGPIOGet);
+  server.on("/api/gpio", HTTP_POST, handleGPIOPost);
+  server.on("/scanwifi", HTTP_GET, handleScanWiFi);
   server.onNotFound([]()
                     {
   server.sendHeader("Location", "/", true);

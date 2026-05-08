@@ -269,6 +269,129 @@
                         </div>
                     </div>
                 </article>
+
+                <article class="card">
+
+                    <div class="card-head">
+                        <div>
+                            <h2 class="card-title">
+                                GPIO Control Center
+                            </h2>
+
+                            <p class="card-subtitle">
+                                Realtime ESP32 pin management and control
+                            </p>
+                        </div>
+
+                        <span class="card-meta">
+                            2s poll
+                        </span>
+                    </div>
+
+                    <div class="circuit"></div>
+
+                    <div class="panel stack">
+                        <div class="gpio-toolbar">
+                            <div class="field">
+                                <label for="gpioFilterInput">GPIO Search</label>
+                                <input id="gpioFilterInput" class="input" type="text"
+                                    placeholder="Filter by pin, mode, or label">
+                            </div>
+                            <div class="field">
+                                <label for="gpioPinSelect">GPIO Pin</label>
+                                <select id="gpioPinSelect" class="input">
+                                    <option value="1">GPIO1</option>
+                                    <option value="2">GPIO2</option>
+                                    <option value="4">GPIO4</option>
+                                    <option value="5">GPIO5</option>
+                                    <option value="6">GPIO6</option>
+                                    <option value="7">GPIO7</option>
+                                    <option value="8">GPIO8</option>
+                                    <option value="9">GPIO9</option>
+                                    <option value="10">GPIO10</option>
+                                    <option value="11">GPIO11</option>
+                                    <option value="12">GPIO12</option>
+                                    <option value="13">GPIO13</option>
+                                    <option value="14">GPIO14</option>
+                                    <option value="15">GPIO15</option>
+                                    <option value="16">GPIO16</option>
+                                    <option value="17">GPIO17</option>
+                                    <option value="18">GPIO18</option>
+                                    <option value="21">GPIO21</option>
+                                    <option value="33">GPIO33</option>
+                                    <option value="34">GPIO34</option>
+                                    <option value="35">GPIO35</option>
+                                    <option value="36">GPIO36</option>
+                                    <option value="37">GPIO37</option>
+                                    <option value="38">GPIO38</option>
+                                    <option value="39">GPIO39</option>
+                                    <option value="40">GPIO40</option>
+                                    <option value="41">GPIO41</option>
+                                    <option value="42">GPIO42</option>
+                                    <option value="43">GPIO43</option>
+                                    <option value="44">GPIO44</option>
+                                    <option value="45">GPIO45</option>
+                                    <option value="47">GPIO47</option>
+                                    <option value="48">GPIO48</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="gpioModeSelect">Mode</label>
+                                <select id="gpioModeSelect" class="input">
+                                    <option value="INPUT">INPUT</option>
+                                    <option value="OUTPUT">OUTPUT</option>
+                                    <option value="PWM">PWM</option>
+                                </select>
+                            </div>
+                            <div class="field gpio-actions-field">
+                                <label>Action</label>
+                                <div class="split">
+                                    <button id="addGPIOBtn" class="btn" type="button">Add Pin</button>
+                                    <button id="gpioExportBtn" class="btn secondary" type="button">Export</button>
+                                    <button id="gpioImportBtn" class="btn secondary" type="button">Import</button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div style="height:20px;"></div>
+
+                    <div class="gpio-table-wrap panel">
+                        <table class="gpio-table">
+                            <thead>
+                                <tr>
+                                    <th>GPIO</th>
+                                    <th>Mode</th>
+                                    <th>State</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gpioTableBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div style="height:20px;"></div>
+
+                    <div class="grid-2 gpio-bottom-grid">
+                        <div class="panel stack">
+                            <h3 class="section-title">Realtime Event Log</h3>
+                            <div id="gpioEventLog" class="gpio-event-log"></div>
+                        </div>
+                        <div class="panel stack">
+                            <h3 class="section-title">ESP32 Pinout Overview</h3>
+                            <div class="pinout-legend">
+                                <span><i class="legend-dot out-high"></i>Output HIGH</span>
+                                <span><i class="legend-dot in-pin"></i>Input</span>
+                                <span><i class="legend-dot pwm-pin"></i>PWM</span>
+                                <span><i class="legend-dot unused"></i>Unused</span>
+                                <span><i class="legend-dot conflict"></i>Conflict</span>
+                            </div>
+                            <div id="gpioPinout" class="gpio-pinout"></div>
+                        </div>
+                    </div>
+
+                </article>
             </section>
 
             <section id="configPage" class="page">
@@ -297,7 +420,41 @@
                                 class="btn full">Connect</button></div>
                     </form>
                 </article>
+                <article class="card">
 
+                    <div class="card-head">
+
+                        <div>
+                            <h2 class="card-title">
+                                WiFi Scanner
+                            </h2>
+
+                            <p class="card-subtitle">
+                                Scan nearby WiFi networks and auto-fill SSID
+                            </p>
+                        </div>
+
+                        <button id="scanWifiBtn" class="btn">
+                            Scan
+                        </button>
+
+                    </div>
+
+                    <div class="circuit"></div>
+
+                    <div class="panel stack">
+
+                        <div id="wifiScannerStatus" class="helper">
+                            Press scan to search nearby WiFi...
+                        </div>
+
+                        <div id="wifiList" class="wifi-list">
+
+                        </div>
+
+                    </div>
+
+                </article>
 
                 <article class="card">
                     <div class="card-head">

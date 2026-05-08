@@ -8,6 +8,7 @@ const API_BASE = '/api';
 const POLL_INTERVALS = {
     sensors: 2000,  // 2 seconds
     devices: 2000,  // 2 seconds
+    gpio: 2000,     // 2 seconds
     system: 5000,    // 5 seconds
     diagnostics: 5000 // 5 seconds
 };
@@ -58,11 +59,21 @@ const state = {
         cpuTemp: 0,
         uptime: '--'
     },
+    gpio: [],
+    gpioMeta: {
+        filter: '',
+        labels: {},
+        favorites: {},
+        locks: {},
+        events: [],
+        pendingUpdates: {}
+    }
 };
 
 let pollTimers = {
     sensors: null,
     devices: null,
+    gpio: null,
     system: null,
     diagnostics: null,
 };
@@ -86,6 +97,9 @@ const humData = [];
 
 let tempChart = null;
 let humChart = null;
+
+const SUPPORTED_GPIO_PINS = [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 47, 48];
+const GPIO_META_STORAGE_KEY = 'gpioControlCenterMetaV1';
 
 // ========== API FUNCTIONS ==========
 
@@ -660,6 +674,423 @@ function updateDeviceUI() {
     neoControls.forEach(ctrl => ctrl.disabled = mode === 'AUTO');
 }
 
+// ========== GPIO CONTROL CENTER ==========
+
+function loadGPIOState() {
+    try {
+        const raw = localStorage.getItem(GPIO_META_STORAGE_KEY);
+        if (!raw) {
+            return;
+        }
+
+        const parsed = JSON.parse(raw);
+        state.gpioMeta.labels = parsed.labels || {};
+        state.gpioMeta.favorites = parsed.favorites || {};
+        state.gpioMeta.locks = parsed.locks || {};
+    } catch (error) {
+        console.warn('Failed to load GPIO meta:', error);
+    }
+}
+
+function saveGPIOState() {
+    const payload = {
+        labels: state.gpioMeta.labels,
+        favorites: state.gpioMeta.favorites,
+        locks: state.gpioMeta.locks
+    };
+    localStorage.setItem(GPIO_META_STORAGE_KEY, JSON.stringify(payload));
+}
+
+function logGPIOEvent(message, type = 'info') {
+    state.gpioMeta.events.unshift({
+        message,
+        type,
+        time: new Date().toLocaleTimeString()
+    });
+
+    if (state.gpioMeta.events.length > 20) {
+        state.gpioMeta.events.length = 20;
+    }
+
+    const logEl = document.getElementById('gpioEventLog');
+    if (!logEl) {
+        return;
+    }
+
+    logEl.innerHTML = state.gpioMeta.events.map((item) => (
+        `<div class="gpio-log-item ${item.type}"><strong>${item.time}</strong> ${item.message}</div>`
+    )).join('');
+}
+
+function sanitizeGPIOPins(pins) {
+    return (pins || [])
+        .filter((pin) => SUPPORTED_GPIO_PINS.includes(pin.pin))
+        .map((pin) => {
+
+            const oldRow = findGPIORow(pin.pin);
+
+            const mode = (pin.mode || 'INPUT').toUpperCase();
+            const value = Number(pin.value || 0);
+
+            const changed =
+                !oldRow ||
+                oldRow.mode !== mode ||
+                oldRow.value !== value;
+
+            return {
+                pin: pin.pin,
+                mode,
+                value,
+                pwm: mode === 'PWM' ? value : 0,
+
+                updatedAt: changed
+                    ? Date.now()
+                    : (oldRow?.updatedAt || Date.now()),
+
+                isPending: false
+            };
+        });
+}
+
+function getGPIOBadgeClass(row) {
+    if (row.mode === 'PWM') {
+        return 'state-comfort';
+    }
+    if (row.value > 0) {
+        return 'state-easy gpio-active';
+    }
+    return 'state-off';
+}
+
+function getGPIOStateLabel(row) {
+    if (row.mode === 'PWM') {
+        return `PWM ${row.value}`;
+    }
+    return row.value > 0 ? 'HIGH' : 'LOW';
+}
+
+function getLastUpdateText(updatedAt) {
+    const seconds = Math.max(0, Math.round((Date.now() - updatedAt) / 1000));
+    return `Updated ${seconds}s ago`;
+}
+
+function updateGPIOPinout() {
+    const pinout = document.getElementById('gpioPinout');
+    if (!pinout) {
+        return;
+    }
+
+    const pinUsage = {};
+    state.gpio.forEach((row) => {
+        pinUsage[row.pin] = row;
+    });
+
+    pinout.innerHTML = SUPPORTED_GPIO_PINS.map((pin) => {
+        const row = pinUsage[pin];
+        let cls = 'unused';
+
+        if (row) {
+            if (row.conflict) {
+                cls = 'conflict';
+            } else if (row.mode === 'PWM') {
+                cls = 'pwm-pin';
+            } else if (row.mode === 'INPUT') {
+                cls = 'in-pin';
+            } else if (row.mode === 'OUTPUT' && row.value > 0) {
+                cls = 'out-high';
+            }
+        }
+
+        return `<div class="pin-chip ${cls}">GPIO${pin}</div>`;
+    }).join('');
+}
+
+function applyGPIOConflicts() {
+    const counts = {};
+    state.gpio.forEach((row) => {
+        counts[row.pin] = (counts[row.pin] || 0) + 1;
+    });
+
+    state.gpio = state.gpio.map((row) => ({
+        ...row,
+        conflict: (counts[row.pin] || 0) > 1
+    }));
+}
+
+function renderGPIOList() {
+    const tbody = document.getElementById('gpioTableBody');
+    if (!tbody) {
+        return;
+    }
+
+    applyGPIOConflicts();
+
+    const filter = (state.gpioMeta.filter || '').trim().toLowerCase();
+    const rows = state.gpio.filter((row) => {
+        const label = (state.gpioMeta.labels[row.pin] || '').toLowerCase();
+        const haystack = `gpio${row.pin} ${row.mode} ${getGPIOStateLabel(row)} ${label}`.toLowerCase();
+        return !filter || haystack.includes(filter);
+    }).map((row) => ({
+        ...row,
+        isPending: !!state.gpioMeta.pendingUpdates[row.pin]
+    }));
+
+    tbody.innerHTML = rows.map((row) => {
+        const isLocked = !!state.gpioMeta.locks[row.pin];
+        const favorite = !!state.gpioMeta.favorites[row.pin];
+        const label = state.gpioMeta.labels[row.pin] || '';
+
+        const actionControl = row.mode === 'PWM'
+            ? `
+            <div class="gpio-action-stack">
+                <input class="input range-input gpio-pwm-slider" type="range" min="0" max="255" value="${row.value}" data-gpio-action="pwm" data-gpio-pin="${row.pin}" ${isLocked ? 'disabled' : ''}>
+                <div class="gpio-pwm-value">PWM: ${row.value}</div>
+            </div>`
+            : `<button class="btn ${row.mode === 'INPUT' ? 'secondary' : ''}" data-gpio-action="${row.mode === 'INPUT' ? 'read' : 'toggle'}" data-gpio-pin="${row.pin}" ${isLocked ? 'disabled' : ''}>${row.mode === 'INPUT' ? 'Read' : 'Toggle'}</button>`;
+
+        const pinOptions = SUPPORTED_GPIO_PINS.map((pin) => (
+            `<option value="${pin}" ${pin === row.pin ? 'selected' : ''}>GPIO${pin}</option>`
+        )).join('');
+
+        return `
+        <tr class="${row.conflict ? 'gpio-conflict-row' : ''} ${row.isPending ? 'gpio-pending-row' : ''}">
+            <td>
+                <div class="gpio-first-cell">
+                    <div class="gpio-static-label">
+                        GPIO${row.pin}
+                    </div>
+                    <input class="input gpio-label-input" data-gpio-action="label" data-gpio-pin="${row.pin}" placeholder="Label" value="${label}" ${isLocked ? 'disabled' : ''}>
+                    <div class="gpio-mini-actions">
+                        <button class="gpio-icon-btn ${favorite ? 'active' : ''}" title="Favorite" data-gpio-action="favorite" data-gpio-pin="${row.pin}">★</button>
+                        <button class="gpio-icon-btn ${isLocked ? 'active' : ''}" title="Lock" data-gpio-action="lock" data-gpio-pin="${row.pin}">🔒</button>
+                        <button class="gpio-icon-btn danger" title="Remove" data-gpio-action="remove" data-gpio-pin="${row.pin}">✕</button>
+                    </div>
+                </div>
+            </td>
+            <td>
+            <div class="gpio-static-mode ${row.mode.toLowerCase()}">
+                ${row.mode}
+            </div>
+            </td>
+            <td>
+                <div class="gpio-state-wrap">
+                    <span class="sensor-state ${getGPIOBadgeClass(row)}">${getGPIOStateLabel(row)}</span>
+                    <small class="helper">Value: ${row.value}</small>
+                    <small class="helper">${getLastUpdateText(row.updatedAt)}</small>
+                    ${row.conflict ? '<small class="helper gpio-error">Conflict detected</small>' : ''}
+                </div>
+            </td>
+            <td>${actionControl}</td>
+        </tr>`;
+    }).join('');
+
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="4"><div class="helper">No GPIO rows match your filter.</div></td></tr>';
+    }
+
+    updateGPIOPinout();
+}
+
+function updateGPIOUI() {
+    renderGPIOList();
+}
+
+function findGPIORow(pin) {
+    return state.gpio.find((row) => row.pin === Number(pin));
+}
+
+async function sendGPIOUpdate(payload, options = {}) {
+    state.gpioMeta.pendingUpdates[payload.pin] = {
+        mode: payload.mode,
+        value: payload.value
+    };
+    updateGPIOUI();
+
+    const result = await apiRequest('/gpio', 'POST', payload);
+
+    delete state.gpioMeta.pendingUpdates[payload.pin];
+
+    if (!result.success) {
+        showToast(`GPIO update failed: ${result.error}`, 'error');
+        logGPIOEvent(`GPIO${payload.pin} update failed`, 'error');
+        updateGPIOUI();
+        return result;
+    }
+
+    if (!options.silent) {
+        showToast(`GPIO${payload.pin} updated`, 'success');
+    }
+
+    await pollGPIOStatus(true);
+    return result;
+}
+
+async function pollGPIOStatus(silent = false) {
+    const result = await apiRequest('/gpio');
+
+    if (!result.success) {
+        if (!silent) {
+            logGPIOEvent('GPIO polling unavailable', 'error');
+        }
+        return result;
+    }
+
+    state.gpio = sanitizeGPIOPins(result.data.pins);
+    updateGPIOUI();
+
+    if (!silent) {
+        logGPIOEvent('GPIO states synchronized', 'info');
+    }
+
+    return result;
+}
+
+async function addGPIOPin() {
+    const pin = Number(document.getElementById('gpioPinSelect').value);
+    const mode = document.getElementById('gpioModeSelect').value;
+    const value = mode === 'PWM' ? 120 : 0;
+
+    if (!SUPPORTED_GPIO_PINS.includes(pin)) {
+        showToast('Invalid GPIO pin selection', 'error');
+        return;
+    }
+
+    const existing = findGPIORow(pin);
+    if (existing) {
+        showToast(`GPIO${pin} already exists. Edit the row directly.`, 'warning');
+        return;
+    }
+
+    await sendGPIOUpdate({ pin, mode, value });
+    logGPIOEvent(`Added GPIO${pin} in ${mode} mode`, 'success');
+}
+
+function exportGPIOConfig() {
+    const payload = {
+        pins: state.gpio.map((row) => ({ pin: row.pin, mode: row.mode, value: row.value })),
+        labels: state.gpioMeta.labels,
+        favorites: state.gpioMeta.favorites,
+        locks: state.gpioMeta.locks
+    };
+
+    const text = JSON.stringify(payload, null, 2);
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('GPIO configuration copied to clipboard', 'success');
+        }).catch(() => {
+            prompt('Copy GPIO configuration JSON:', text);
+        });
+    } else {
+        prompt('Copy GPIO configuration JSON:', text);
+    }
+
+    logGPIOEvent('GPIO configuration exported', 'info');
+}
+
+async function importGPIOConfig() {
+    const raw = prompt('Paste GPIO configuration JSON');
+    if (!raw) {
+        return;
+    }
+
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed.pins)) {
+            throw new Error('pins must be an array');
+        }
+
+        for (const row of parsed.pins) {
+            await sendGPIOUpdate({ pin: row.pin, mode: row.mode, value: row.value }, { silent: true });
+        }
+
+        state.gpioMeta.labels = parsed.labels || state.gpioMeta.labels;
+        state.gpioMeta.favorites = parsed.favorites || state.gpioMeta.favorites;
+        state.gpioMeta.locks = parsed.locks || state.gpioMeta.locks;
+        saveGPIOState();
+        updateGPIOUI();
+        showToast('GPIO configuration imported', 'success');
+        logGPIOEvent('GPIO configuration imported', 'success');
+    } catch (error) {
+        showToast(`Import failed: ${error.message}`, 'error');
+    }
+}
+
+async function handleGPIOAction(event) {
+    const target = event.target;
+    const action = target?.dataset?.gpioAction;
+    const pin = Number(target?.dataset?.gpioPin);
+
+    if (!action || !pin) {
+        return;
+    }
+
+    const row = findGPIORow(pin);
+    if (!row && action !== 'remove') {
+        return;
+    }
+
+    if (action === 'read') {
+        await sendGPIOUpdate({ pin, mode: 'INPUT', value: 0 }, { silent: true });
+        logGPIOEvent(`Read GPIO${pin}`, 'info');
+    }
+
+    if (action === 'toggle') {
+        const next = row.value > 0 ? 0 : 1;
+        await sendGPIOUpdate({ pin, mode: 'OUTPUT', value: next }, { silent: true });
+        logGPIOEvent(`Toggled GPIO${pin} to ${next ? 'HIGH' : 'LOW'}`, 'success');
+    }
+
+    if (action === 'pwm') {
+        const value = Number(target.value || 0);
+        await sendGPIOUpdate({ pin, mode: 'PWM', value }, { silent: true });
+    }
+
+    if (action === 'mode') {
+        const mode = target.value;
+        const value = mode === 'PWM' ? (row?.value || 120) : row?.value || 0;
+        await sendGPIOUpdate({ pin, mode, value }, { silent: true });
+        logGPIOEvent(`GPIO${pin} mode set to ${mode}`, 'info');
+    }
+
+    if (action === 'pin') {
+        const nextPin = Number(target.value);
+        if (!SUPPORTED_GPIO_PINS.includes(nextPin)) {
+            showToast('Invalid GPIO pin', 'error');
+            return;
+        }
+        if (findGPIORow(nextPin)) {
+            showToast(`GPIO${nextPin} already configured`, 'warning');
+            return;
+        }
+        await sendGPIOUpdate({ pin: nextPin, mode: row.mode, value: row.value }, { silent: true });
+        await sendGPIOUpdate({ pin, remove: true }, { silent: true });
+        logGPIOEvent(`GPIO${pin} remapped to GPIO${nextPin}`, 'info');
+    }
+
+    if (action === 'label') {
+        state.gpioMeta.labels[pin] = target.value.trim();
+        saveGPIOState();
+    }
+
+    if (action === 'favorite') {
+        state.gpioMeta.favorites[pin] = !state.gpioMeta.favorites[pin];
+        saveGPIOState();
+        updateGPIOUI();
+    }
+
+    if (action === 'lock') {
+        state.gpioMeta.locks[pin] = !state.gpioMeta.locks[pin];
+        saveGPIOState();
+        updateGPIOUI();
+    }
+
+    if (action === 'remove') {
+        await sendGPIOUpdate({ pin, remove: true }, { silent: true });
+        logGPIOEvent(`Removed GPIO${pin}`, 'warning');
+    }
+}
+
 // ========== COLOR CONVERSION ==========
 
 /**
@@ -746,6 +1177,35 @@ function initializeEventListeners() {
 
     // System Reset
     document.getElementById('systemResetBtn').addEventListener('click', resetSystem);
+
+    // GPIO Control Center
+    document.getElementById('addGPIOBtn').addEventListener('click', addGPIOPin);
+    document.getElementById('gpioExportBtn').addEventListener('click', exportGPIOConfig);
+    document.getElementById('gpioImportBtn').addEventListener('click', importGPIOConfig);
+    document.getElementById('gpioFilterInput').addEventListener('input', (event) => {
+        state.gpioMeta.filter = event.target.value || '';
+        updateGPIOUI();
+    });
+
+    const gpioTableBody = document.getElementById('gpioTableBody');
+    gpioTableBody.addEventListener('click', handleGPIOAction);
+    gpioTableBody.addEventListener('change', handleGPIOAction);
+    gpioTableBody.addEventListener('input', (event) => {
+        const action = event.target?.dataset?.gpioAction;
+        if (action === 'label') {
+            handleGPIOAction(event);
+            return;
+        }
+        if (action === 'pwm') {
+            const pin = Number(event.target.dataset.gpioPin);
+            const row = findGPIORow(pin);
+            if (row) {
+                row.value = Number(event.target.value || 0);
+                row.updatedAt = Date.now();
+                updateGPIOUI();
+            }
+        }
+    });
 }
 
 /**
@@ -931,6 +1391,111 @@ async function saveSensorSettings() {
     await updateSettings({ sensor_interval: interval });
 }
 
+
+const scanWifiBtn =
+    document.getElementById("scanWifiBtn");
+
+const wifiList =
+    document.getElementById("wifiList");
+
+const wifiScannerStatus =
+    document.getElementById("wifiScannerStatus");
+
+scanWifiBtn.addEventListener("click", async () => {
+
+    wifiScannerStatus.innerText =
+        "Scanning WiFi...";
+
+    wifiList.innerHTML = "";
+
+    try {
+
+        const response =
+            await fetch("/scanwifi");
+
+        const data =
+            await response.json();
+
+        wifiScannerStatus.innerText =
+            `Found ${data.length} networks`;
+
+        data.forEach(wifi => {
+
+            let signalClass = "signal-weak";
+
+            if (wifi.rssi > -60)
+                signalClass = "signal-good";
+
+            else if (wifi.rssi > -75)
+                signalClass = "signal-medium";
+
+            const item =
+                document.createElement("div");
+
+            item.className = "wifi-item";
+
+            item.innerHTML = `
+
+                <div class="wifi-info">
+
+                    <div class="wifi-ssid">
+                        ${wifi.ssid || "(Hidden)"}
+                    </div>
+
+                    <div class="wifi-meta ${signalClass}">
+                        RSSI: ${wifi.rssi} dBm
+                    </div>
+
+                </div>
+
+                <button class="btn select-wifi-btn">
+                    Select
+                </button>
+            `;
+
+            item.querySelector(".select-wifi-btn")
+                .addEventListener("click", () => {
+
+                    const ssidInput =
+                        document.getElementById("configSsid");
+
+                    const passwordInput =
+                        document.getElementById("configPassword");
+
+                    ssidInput.value =
+                        wifi.ssid;
+
+                    passwordInput.focus();
+
+                    ssidInput.classList.add("input-flash");
+
+                    passwordInput.classList.add("input-flash");
+
+                    setTimeout(() => {
+
+                        ssidInput.classList.remove("input-flash");
+
+                        passwordInput.classList.remove("input-flash");
+
+                    }, 800);
+
+                });
+
+            wifiList.appendChild(item);
+
+        });
+
+    }
+    catch (err) {
+
+        wifiScannerStatus.innerText =
+            "Failed to scan WiFi";
+
+        console.error(err);
+    }
+
+});
+
 // ========== POLLING ==========
 
 /**
@@ -963,6 +1528,12 @@ function startDevicePolling() {
     pollTimers.devices = setInterval(fetchDeviceState, POLL_INTERVALS.devices);
 }
 
+function startGPIOPolling() {
+    pollGPIOStatus(true);
+    clearInterval(pollTimers.gpio);
+    pollTimers.gpio = setInterval(() => pollGPIOStatus(true), POLL_INTERVALS.gpio);
+}
+
 /**
  * Start polling system info
  */
@@ -978,7 +1549,9 @@ function startSystemPolling() {
 function stopAllPolling() {
     clearInterval(pollTimers.sensors);
     clearInterval(pollTimers.devices);
+    clearInterval(pollTimers.gpio);
     clearInterval(pollTimers.system);
+    clearInterval(pollTimers.diagnostics);
 }
 
 // ========== NOTIFICATIONS ==========
@@ -1092,6 +1665,8 @@ function initializeCharts() {
 async function initializeDashboard() {
     console.log('Initializing IoT Dashboard...');
 
+    loadGPIOState();
+
     // Initialize charts first
     initializeCharts();
 
@@ -1104,7 +1679,8 @@ async function initializeDashboard() {
         fetchSystemInfo(true),
         fetchSensorData(),
         fetchDeviceState(),
-        fetchDiagnostics()
+        fetchDiagnostics(),
+        pollGPIOStatus(true)
     ]);
     showLoading(false);
 
@@ -1113,6 +1689,7 @@ async function initializeDashboard() {
     // Start polling
     startSensorPolling();
     startDevicePolling();
+    startGPIOPolling();
     startSystemPolling();
     startDiagnosticsPolling();
 
