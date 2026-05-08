@@ -1,3 +1,198 @@
+main.cpp
+
+#include "global.h"
+
+#include "led_blinky.h"
+#include "neo_blinky.h"
+#include "temp_humi_monitor.h"
+#include "mainserver.h"
+#include "tinyml.h"
+#include "coreiot.h"
+
+// include task
+#include "task_check_info.h"
+#include "task_toogle_boot.h"
+
+void setup()
+{
+  Serial.begin(115200);
+  initSystemContext();
+  check_info_File(0);
+
+  // xTaskCreate(led_blinky, "Task LED Blink", 2048, NULL, 2, NULL);
+  // xTaskCreate(neo_blinky, "Task NEO Blink", 2048, NULL, 2, NULL);
+  xTaskCreate(temp_humi_monitor, "Task TEMP HUMI Monitor", 2048, NULL, 2, NULL);
+  xTaskCreate(main_server_task, "WebServer Task", 8192, NULL, 2, NULL);
+  xTaskCreate(tiny_ml_task, "Tiny ML Task", 12288, NULL, 2, NULL);
+  xTaskCreate(coreiot_task, "CoreIOT Task", 4096, NULL, 2, NULL);
+  xTaskCreate(Task_Toogle_BOOT, "Task_Toogle_BOOT", 4096, NULL, 2, NULL);
+}
+
+void loop()
+{
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+}
+
+global.cpp
+
+#include "global.h"
+
+SystemContext systemContext;
+
+static StaticSemaphore_t xContextMutexBuffer;
+static StaticSemaphore_t xInternetSemaphoreBuffer;
+
+void initSystemContext()
+{
+    systemContext.temperature = 0;
+    systemContext.humidity = 0;
+    systemContext.humidex = 0;
+    systemContext.weather_status = 0;
+
+    systemContext.wifi_ssid = "";
+    systemContext.wifi_pass = "";
+    systemContext.core_iot_token = "";
+    systemContext.core_iot_server = "";
+    systemContext.core_iot_port = "";
+    systemContext.ap_ssid = SSID_AP;
+    systemContext.ap_pass = String(PASS_AP);
+    systemContext.read_interval = 5000;
+
+    systemContext.is_wifi_connected = false;
+    systemContext.led_state = false;
+    systemContext.device_mode = "AUTO";
+
+    systemContext.neo_r = 255;
+    systemContext.neo_g = 107;
+    systemContext.neo_b = 107;
+    systemContext.neo_brightness = 120;
+
+    systemContext.mutex = xSemaphoreCreateMutexStatic(&xContextMutexBuffer);
+    systemContext.internet_semaphore = xSemaphoreCreateBinaryStatic(&xInternetSemaphoreBuffer);
+
+    if (systemContext.mutex == NULL || systemContext.internet_semaphore == NULL)
+    {
+        Serial.println("❌ System context initialization failed");
+        while (true)
+        {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+}
+
+// ===== LABEL =====
+const char *get_weather_label(int label)
+{
+    switch (label)
+    {
+    case 0:
+        return "Sunny";
+    case 1:
+        return "Cloudy";
+    case 2:
+        return "Rain";
+    case 3:
+        return "Storm";
+    default:
+        return "Unknown";
+    }
+}
+
+
+led_blinky.cpp
+
+#include "led_blinky.h"
+
+#define T_COLD_MAX 25
+#define T_HOT_MIN 32
+
+static int clamp(int val, int minVal, int maxVal)
+{
+  if (val < minVal)
+    return minVal;
+  if (val > maxVal)
+    return maxVal;
+  return val;
+}
+
+void led_blinky(void *pvParameters)
+{
+  pinMode(LED_GPIO, OUTPUT);
+
+  while (1)
+  {
+    String mode;
+    bool led_state = false;
+    float temperature = 0;
+
+    if (takeSystemContext(portMAX_DELAY))
+    {
+      mode = systemContext.device_mode;
+      led_state = systemContext.led_state;
+      temperature = systemContext.temperature;
+      giveSystemContext();
+    }
+
+    if (mode == "MANUAL")
+    {
+      digitalWrite(LED_GPIO, led_state ? HIGH : LOW);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
+    float T = temperature;
+
+    if (T < T_COLD_MAX)
+    {
+      int t_on = 150;
+      int t_off = 1500 - 120 * (T - 15);
+      t_off = clamp(t_off, 200, 2000);
+
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_off));
+    }
+    else if (T <= 32)
+    {
+      int t_on = 120;
+      int t_gap = 120;
+      int t_rest = 800 - 50 * (T - 25);
+      t_rest = clamp(t_rest, 200, 1000);
+
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_gap));
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_rest));
+    }
+    else
+    {
+      int N = 3 + (T - 32) / 2;
+      N = clamp(N, 3, 8);
+
+      int t_blink = 150 - 11 * (T - 32);
+      t_blink = clamp(t_blink, 40, 150);
+
+      for (int i = 0; i < N; i++)
+      {
+        digitalWrite(LED_GPIO, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(t_blink));
+        digitalWrite(LED_GPIO, LOW);
+        vTaskDelay(pdMS_TO_TICKS(t_blink));
+      }
+
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
+  }
+}
+
+
+mainserver.cpp
+
 #include "mainserver.h"
 #include "task_check_info.h"
 #include <WiFi.h>
@@ -5,16 +200,11 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <cmath>
-#include <DNSServer.h>
-#include "esp_system.h"
-#include "esp_spi_flash.h"
 
 static bool isAPMode = true;
 static WebServer server(80);
 static unsigned long connect_start_ms = 0;
 static bool connecting = false;
-static DNSServer dnsServer;
-const byte DNS_PORT = 53;
 
 // ========== Handlers ==========
 void handleRoot()
@@ -27,11 +217,6 @@ void handleJS()
   serveFile("/script.js", "application/javascript");
 }
 
-void handleChartJS()
-{
-  serveFile("/chart.js", "application/javascript");
-}
-
 void handleCSS()
 {
   serveFile("/styles.css", "text/css");
@@ -40,72 +225,6 @@ void handleCSS()
 String jsonResponse(String body)
 {
   return "{" + body + "}";
-}
-
-String formatUptime(unsigned long ms)
-{
-  unsigned long seconds = ms / 1000;
-  unsigned long minutes = seconds / 60;
-  unsigned long hours = minutes / 60;
-
-  seconds %= 60;
-  minutes %= 60;
-
-  char buffer[32];
-  sprintf(buffer, "%luh %lum %lus", hours, minutes, seconds);
-
-  return String(buffer);
-}
-
-void handleDiagnostics()
-{
-  StaticJsonDocument<512> doc;
-
-  // ===== Heap =====
-  uint32_t freeHeap = ESP.getFreeHeap();
-  uint32_t totalHeap = ESP.getHeapSize();
-
-  // ===== WiFi RSSI =====
-  int wifiRSSI = WiFi.RSSI();
-
-  // ===== Filesystem =====
-  size_t totalBytes = LittleFS.totalBytes();
-  size_t usedBytes = LittleFS.usedBytes();
-
-  float fsUsage = 0;
-  if (totalBytes > 0)
-  {
-    fsUsage = ((float)usedBytes / (float)totalBytes) * 100.0f;
-  }
-
-  // ===== CPU Temp =====
-  float cpuTemp = temperatureRead();
-
-  // ===== Uptime =====
-  String uptime = formatUptime(millis());
-
-  // ===== MQTT =====
-  bool mqttConnected = false;
-
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    mqttConnected = systemContext.is_wifi_connected;
-    giveSystemContext();
-  }
-
-  // ===== JSON =====
-  doc["free_heap_kb"] = freeHeap / 1024;
-  doc["total_heap_kb"] = totalHeap / 1024;
-  doc["wifi_rssi"] = wifiRSSI;
-  doc["mqtt"] = mqttConnected ? "Connected" : "Disconnected";
-  doc["fs_usage"] = round(fsUsage);
-  doc["cpu_temp"] = round(cpuTemp);
-  doc["uptime"] = uptime;
-
-  String out;
-  serializeJson(doc, out);
-
-  server.send(200, "application/json", out);
 }
 
 void handleSystem()
@@ -134,9 +253,7 @@ void handleSystem()
 
   StaticJsonDocument<256> doc;
   doc["ssid"] = ap_ssid;
-  doc["ip"] = isAPMode
-                  ? WiFi.softAPIP().toString()
-                  : WiFi.localIP().toString();
+  doc["ip"] = WiFi.localIP().toString();
   doc["ap_password"] = ap_pass;
   doc["wifi_ssid"] = wifi_ssid;
   doc["wifi_password"] = wifi_pass;
@@ -442,7 +559,6 @@ void setupServer()
   server.on("/", HTTP_GET, handleRoot);
 
   server.on("/script.js", HTTP_GET, handleJS);
-  server.on("/chart.js", HTTP_GET, handleChartJS);
   server.on("/styles.css", HTTP_GET, handleCSS);
 
   server.on("/api/system", HTTP_GET, handleSystem);
@@ -452,40 +568,17 @@ void setupServer()
   server.on("/api/config", HTTP_POST, handleConfig);
   server.on("/api/settings", HTTP_POST, handleSettingsAPI);
   server.on("/api/reset", HTTP_POST, handleReset);
-  server.on("/api/diagnostics", HTTP_GET, handleDiagnostics);
 
   server.onNotFound([]()
-                    {
-  server.sendHeader("Location", "/", true);
-  server.send(302, "text/plain", ""); });
+                    { server.send(404, "text/plain", "Route not found"); });
 
   server.begin();
 }
-
-// void startAP()
-// {
-//   String ap_ssid;
-//   String ap_pass;
-//   if (takeSystemContext(portMAX_DELAY))
-//   {
-//     ap_ssid = systemContext.ap_ssid;
-//     ap_pass = systemContext.ap_pass;
-//     giveSystemContext();
-//   }
-
-//   WiFi.mode(WIFI_AP);
-//   WiFi.softAP(ap_ssid.c_str(), ap_pass.c_str());
-//   Serial.print("AP IP address: ");
-//   Serial.println(WiFi.softAPIP());
-//   isAPMode = true;
-//   connecting = false;
-// }
 
 void startAP()
 {
   String ap_ssid;
   String ap_pass;
-
   if (takeSystemContext(portMAX_DELAY))
   {
     ap_ssid = systemContext.ap_ssid;
@@ -493,21 +586,10 @@ void startAP()
     giveSystemContext();
   }
 
-  IPAddress local_ip(192, 168, 4, 1);
-  IPAddress gateway(192, 168, 4, 1);
-  IPAddress subnet(255, 255, 255, 0);
-
   WiFi.mode(WIFI_AP);
-
-  WiFi.softAPConfig(local_ip, gateway, subnet);
-
   WiFi.softAP(ap_ssid.c_str(), ap_pass.c_str());
-
-  dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
-
   Serial.print("AP IP address: ");
   Serial.println(WiFi.softAPIP());
-
   isAPMode = true;
   connecting = false;
 }
@@ -523,7 +605,7 @@ void connectToWiFi()
     giveSystemContext();
   }
 
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA);
   if (wifi_pass.isEmpty())
   {
     WiFi.begin(wifi_ssid.c_str());
@@ -548,7 +630,6 @@ void main_server_task(void *pvParameters)
 
   while (1)
   {
-    dnsServer.processNextRequest();
     server.handleClient();
 
     if (digitalRead(BOOT_PIN) == LOW)
@@ -601,3 +682,110 @@ void main_server_task(void *pvParameters)
     vTaskDelay(20);
   }
 }
+
+neo_blinky.cpp
+
+
+#include "neo_blinky.h"
+#include "global.h"
+
+static float clampf(float v, float a, float b)
+{
+    if (v < a)
+        return a;
+    if (v > b)
+        return b;
+    return v;
+}
+
+static uint32_t getColor(Adafruit_NeoPixel &strip, int r, int g, int b, float brightness)
+{
+    r = (int)(r * brightness);
+    g = (int)(g * brightness);
+    b = (int)(b * brightness);
+    return strip.Color(r, g, b);
+}
+
+void neo_blinky(void *pvParameters)
+{
+    Adafruit_NeoPixel strip(LED_COUNT, NEO_PIN, NEO_GRB + NEO_KHZ800);
+    strip.begin();
+    strip.clear();
+    strip.show();
+
+    while (1)
+    {
+        String mode;
+        int neo_r = 0;
+        int neo_g = 0;
+        int neo_b = 0;
+        int neo_brightness = 0;
+        float humidity = 0;
+
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            mode = systemContext.device_mode;
+            neo_r = systemContext.neo_r;
+            neo_g = systemContext.neo_g;
+            neo_b = systemContext.neo_b;
+            neo_brightness = systemContext.neo_brightness;
+            humidity = systemContext.humidity;
+            giveSystemContext();
+        }
+
+        if (mode == "MANUAL")
+        {
+            float brightness = clampf(neo_brightness / 255.0f, 0.0, 1.0);
+            uint32_t color = getColor(strip, neo_r, neo_g, neo_b, brightness);
+            strip.setPixelColor(0, color);
+            strip.show();
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        float H = humidity;
+        int r = 0, g = 0, b = 0;
+        float T = 1000;
+        float B = 0.5;
+
+        if (H < 40)
+        {
+            r = 255;
+            g = 200;
+            b = 0;
+            T = 1500 - 20 * (40 - H);
+            B = 0.4 + 0.01 * H;
+        }
+        else if (H <= 70)
+        {
+            r = 0;
+            g = 255;
+            b = 0;
+            T = 1000 - 20 * abs(H - 60);
+            B = 0.6 + 0.005 * abs(H - 60);
+        }
+        else
+        {
+            r = 0;
+            g = 100;
+            b = 255;
+            T = 700 - 8 * (H - 70);
+            B = 0.7 + 0.003 * (H - 70);
+        }
+
+        T = clampf(T, 20, 2000);
+        B = clampf(B, 0.1, 1.0);
+
+        uint32_t color = getColor(strip, r, g, b, B);
+        int half = T / 2;
+
+        strip.setPixelColor(0, color);
+        strip.show();
+        vTaskDelay(pdMS_TO_TICKS(half));
+
+        strip.setPixelColor(0, 0);
+        strip.show();
+        vTaskDelay(pdMS_TO_TICKS(half));
+    }
+}
+

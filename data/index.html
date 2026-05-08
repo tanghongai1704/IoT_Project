@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iot Assignment</title>
+    <script src="chart.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -95,7 +96,127 @@
                         <div id="comfortRecommendation">Loading recommendations...</div>
                     </div>
                 </article>
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2 class="card-title">Realtime Analytics</h2>
+                            <p class="card-subtitle">
+                                Live temperature and humidity visualization
+                            </p>
+                        </div>
+                    </div>
 
+                    <div class="circuit"></div>
+
+                    <div class="chart-wrapper">
+                        <canvas id="tempChart"></canvas>
+                    </div>
+
+                    <div style="height:30px;"></div>
+
+                    <div class="chart-wrapper">
+                        <canvas id="humChart"></canvas>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2 class="card-title">System Diagnostics</h2>
+                            <p class="card-subtitle">
+                                Realtime ESP32 runtime statistics
+                            </p>
+                        </div>
+
+                        <span class="card-meta">5s poll</span>
+                    </div>
+
+                    <div class="circuit"></div>
+
+                    <div class="diag-grid">
+
+                        <!-- HEAP -->
+                        <div class="diag-item">
+
+                            <label>Free Heap</label>
+
+                            <div id="diagHeap" class="diag-value">
+                                -- KB
+                            </div>
+
+                            <div class="diag-progress">
+                                <div id="heapBar" class="diag-progress-fill">
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- RSSI -->
+                        <div class="diag-item">
+
+                            <label>WiFi RSSI</label>
+
+                            <div id="diagRSSI" class="diag-value">
+                                -- dBm
+                            </div>
+                            <div style="height:10px;"></div>
+                            <div id="wifiQualityBadge" class="sensor-state state-normal">FAIR</div>
+
+                        </div>
+
+                        <!-- MQTT -->
+                        <div class="diag-item">
+
+                            <label>MQTT</label>
+
+                            <div id="diagMQTT" class="diag-badge">
+                                Connected
+                            </div>
+
+                        </div>
+
+                        <!-- FILE SYSTEM -->
+                        <div class="diag-item">
+
+                            <label>FS Usage</label>
+
+                            <div id="diagFS" class="diag-value">
+                                --%
+                            </div>
+
+                            <div class="diag-progress">
+                                <div id="fsBar" class="diag-progress-fill">
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- CPU -->
+                        <div class="diag-item">
+
+                            <label>CPU Temp</label>
+
+                            <div id="diagCPU" class="diag-value">
+                                --°C
+                            </div>
+                            <div style="height:10px;"></div>
+                            <div id="cpuStatusBadge" class="sensor-state state-normal">NORMAL</div>
+
+                        </div>
+
+                        <!-- UPTIME -->
+                        <div class="diag-item">
+
+                            <label>Uptime</label>
+
+                            <div id="diagUptime" class="diag-value">
+                                --
+                            </div>
+
+                        </div>
+
+                    </div>
+                </article>
                 <article class="card">
                     <div class="card-head">
                         <div>

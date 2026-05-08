@@ -8,7 +8,8 @@ const API_BASE = '/api';
 const POLL_INTERVALS = {
     sensors: 2000,  // 2 seconds
     devices: 2000,  // 2 seconds
-    system: 5000    // 5 seconds
+    system: 5000,    // 5 seconds
+    diagnostics: 5000 // 5 seconds
 };
 
 // ========== STATE MANAGEMENT ==========
@@ -48,13 +49,22 @@ const state = {
             brightness: 120,
             logicState: 'DRY'
         }
-    }
+    },
+    diagnostics: {
+        freeHeap: 0,
+        wifiRSSI: 0,
+        mqtt: 'Disconnected',
+        fsUsage: 0,
+        cpuTemp: 0,
+        uptime: '--'
+    },
 };
 
 let pollTimers = {
     sensors: null,
     devices: null,
-    system: null
+    system: null,
+    diagnostics: null,
 };
 
 let toastTimer = null;
@@ -66,6 +76,16 @@ let editingNeoTimeout = null;
 // Track if user is editing Config controls
 let isEditingConfig = false;
 let editingConfigTimeout = null;
+
+// ========== CHART DATA ==========
+const tempLabels = [];
+const tempData = [];
+
+const humLabels = [];
+const humData = [];
+
+let tempChart = null;
+let humChart = null;
 
 // ========== API FUNCTIONS ==========
 
@@ -137,7 +157,9 @@ async function fetchSystemInfo(syncConfigForm = false) {
  */
 async function fetchSensorData() {
     const result = await apiRequest('/sensors');
+    console.log('Sensor fetch result:', result);
     if (result.success) {
+        console.log('Sensor data received:', result.data);
         state.sensors = {
             temperature: parseFloat(result.data.temperature) || 0,
             humidity: parseFloat(result.data.humidity) || 0,
@@ -147,8 +169,57 @@ async function fetchSensorData() {
             comfort: result.data.comfort || 'EASY',
             weather: result.data.weather || 'SUNNY'
         };
+        console.log('Updated state.sensors:', state.sensors);
         updateSensorUI();
+
+        // Update charts with new data
+        const now = new Date().toLocaleTimeString();
+
+        tempLabels.push(now);
+        tempData.push(state.sensors.temperature);
+
+        humLabels.push(now);
+        humData.push(state.sensors.humidity);
+
+        // Limit to 20 data points
+        if (tempLabels.length > 20) {
+            tempLabels.shift();
+            tempData.shift();
+        }
+
+        if (humLabels.length > 20) {
+            humLabels.shift();
+            humData.shift();
+        }
+
+        // Update charts if they exist
+        if (tempChart) {
+            tempChart.update();
+        }
+        if (humChart) {
+            humChart.update();
+        }
     }
+    return result;
+}
+
+async function fetchDiagnostics() {
+    const result = await apiRequest('/diagnostics');
+
+    if (result.success) {
+        state.diagnostics = {
+            freeHeap: result.data.free_heap_kb || 0,
+            totalHeap: result.data.total_heap_kb || 320,
+            wifiRSSI: result.data.wifi_rssi || 0,
+            mqtt: result.data.mqtt || 'Disconnected',
+            fsUsage: result.data.fs_usage || 0,
+            cpuTemp: result.data.cpu_temp || 0,
+            uptime: result.data.uptime || '--'
+        };
+
+        updateDiagnosticsUI();
+    }
+
     return result;
 }
 
@@ -363,6 +434,191 @@ function updateWeatherUI(weather) {
 
     // Add màu
     el.classList.add(getWeatherClass(weather));
+}
+
+function getHeapClass(heapPercent) {
+    if (heapPercent >= 50) return 'diag-good';
+    if (heapPercent >= 25) return 'diag-medium';
+    return 'diag-bad';
+}
+
+function getRSSIClass(rssi) {
+    if (rssi >= -55) return 'diag-good';
+    if (rssi >= -70) return 'diag-medium';
+    return 'diag-bad';
+}
+
+function getFSClass(fs) {
+    if (fs <= 50) return 'diag-good';
+    if (fs <= 80) return 'diag-medium';
+    return 'diag-bad';
+}
+
+function getCPUClass(temp) {
+    if (temp <= 55) return 'diag-good';
+    if (temp <= 70) return 'diag-medium';
+    return 'diag-bad';
+}
+
+function getCPUStatus(temp) {
+    if (temp < 45) return 'Cool';
+    if (temp < 60) return 'Normal';
+    if (temp < 75) return 'Warm';
+    return 'Hot';
+}
+
+function getWiFiQuality(rssi) {
+    if (rssi >= -50) return 'Excellent';
+    if (rssi >= -60) return 'Good';
+    if (rssi >= -70) return 'Fair';
+    return 'Weak';
+}
+
+function getWiFiBadgeClass(rssi) {
+    if (rssi >= -50) return 'state-easy';
+    if (rssi >= -60) return 'state-normal';
+    if (rssi >= -70) return 'state-comfort';
+    return 'state-hard';
+}
+
+function getCPUBadgeClass(temp) {
+    if (temp < 45) return 'state-easy';
+    if (temp < 60) return 'state-normal';
+    if (temp < 75) return 'state-comfort';
+    return 'state-hard';
+}
+
+function getWiFiBadgeClass(rssi) {
+    if (rssi >= -50) return 'state-easy';
+    if (rssi >= -60) return 'state-normal';
+    if (rssi >= -70) return 'state-comfort';
+    return 'state-hard';
+}
+
+function getCPUBadgeClass(temp) {
+    if (temp < 45) return 'state-easy';
+    if (temp < 60) return 'state-normal';
+    if (temp < 75) return 'state-comfort';
+    return 'state-hard';
+}
+
+function updateDiagnosticsUI() {
+
+    // ===== ELEMENTS =====
+
+    const heapEl = document.getElementById('diagHeap');
+    const rssiEl = document.getElementById('diagRSSI');
+    const fsEl = document.getElementById('diagFS');
+    const cpuEl = document.getElementById('diagCPU');
+    const uptimeEl = document.getElementById('diagUptime');
+    const mqttEl = document.getElementById('diagMQTT');
+
+    // ===== PROGRESS BAR ELEMENTS =====
+
+    const heapBar = document.getElementById('heapBar');
+    const fsBar = document.getElementById('fsBar');
+
+    // ===== VALUES =====
+
+    const freeHeap = state.diagnostics.freeHeap;
+    const totalHeap = state.diagnostics.totalHeap;
+    const rssi = state.diagnostics.wifiRSSI;
+    const fs = state.diagnostics.fsUsage;
+    const cpu = state.diagnostics.cpuTemp;
+    const uptime = state.diagnostics.uptime;
+    const mqtt = state.diagnostics.mqtt;
+
+    // ===== HEAP (with percentage) =====
+
+    const heapPercent = totalHeap > 0 ? (freeHeap / totalHeap) * 100 : 0;
+
+    heapEl.textContent = `${freeHeap} KB / ${totalHeap} KB`;
+    heapEl.className = `diag-value ${getHeapClass(heapPercent)}`;
+
+    if (heapBar) {
+        heapBar.style.width = `${Math.min(heapPercent, 100)}%`;
+        heapBar.className = `diag-progress-fill ${getHeapClass(heapPercent)}`;
+    }
+
+    // ===== RSSI =====
+    const wifiQualityBadge = document.getElementById('wifiQualityBadge');
+
+    const mqttConnected =
+        state.diagnostics.mqtt &&
+        state.diagnostics.mqtt !== 'Disconnected';
+
+    // ===== NO WIFI =====
+    if (!mqttConnected || rssi === 0 || rssi === -1) {
+
+        rssiEl.textContent = 'No WiFi';
+        rssiEl.className = 'diag-value state-hot';
+
+        if (wifiQualityBadge) {
+            wifiQualityBadge.textContent = 'OFFLINE';
+            wifiQualityBadge.className = 'sensor-state state-hot';
+        }
+
+    } else {
+
+        // ===== WIFI CONNECTED =====
+        rssiEl.textContent = `${rssi} dBm`;
+        rssiEl.className =
+            `diag-value ${getRSSIClass(rssi)}`;
+
+        if (wifiQualityBadge) {
+
+            wifiQualityBadge.textContent =
+                getWiFiQuality(rssi).toUpperCase();
+
+            wifiQualityBadge.className =
+                `sensor-state ${getWiFiBadgeClass(rssi)}`;
+        }
+    }
+
+    // ===== FILE SYSTEM =====
+
+    fsEl.textContent = `${fs}%`;
+
+    fsEl.className =
+        `diag-value ${getFSClass(fs)}`;
+
+    if (fsBar) {
+        fsBar.style.width = `${Math.min(fs, 100)}%`;
+        fsBar.className = `diag-progress-fill ${getFSClass(fs)}`;
+    }
+
+    // ===== CPU TEMP (Health Meter) =====
+
+    const cpuHealthPercent = Math.min((cpu / 80) * 100, 100);
+    const cpuStatus = getCPUStatus(cpu);
+
+    cpuEl.textContent = `${cpu}°C`;
+    cpuEl.className = `diag-value ${getCPUClass(cpu)}`;
+
+    const cpuStatusBadge = document.getElementById('cpuStatusBadge');
+    if (cpuStatusBadge) {
+        cpuStatusBadge.textContent = cpuStatus.toUpperCase();
+        cpuStatusBadge.className = `sensor-state ${getCPUBadgeClass(cpu)}`;
+    }
+
+    // ===== UPTIME =====
+
+    uptimeEl.textContent = uptime;
+
+    uptimeEl.className =
+        'diag-value diag-neutral';
+
+    // ===== MQTT =====
+
+    mqttEl.textContent = mqtt;
+
+    mqttEl.className =
+        'diag-badge ' +
+        (
+            mqtt === 'Connected'
+                ? 'diag-good blink'
+                : 'diag-bad blink'
+        );
 }
 
 /**
@@ -686,6 +942,18 @@ function startSensorPolling() {
     pollTimers.sensors = setInterval(fetchSensorData, POLL_INTERVALS.sensors);
 }
 
+/*
+ * Start polling diagnostics data
+ */
+function startDiagnosticsPolling() {
+    fetchDiagnostics();
+
+    clearInterval(pollTimers.diagnostics);
+
+    pollTimers.diagnostics =
+        setInterval(fetchDiagnostics,
+            POLL_INTERVALS.diagnostics);
+}
 /**
  * Start polling device state
  */
@@ -742,6 +1010,80 @@ function showLoading(show = true) {
     }
 }
 
+// ========== CHART INITIALIZATION ==========
+
+/**
+ * Initialize charts
+ */
+function initializeCharts() {
+    // Check if Chart library is loaded
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not loaded yet, skipping chart initialization');
+        return;
+    }
+
+    // Temperature Chart
+    const tempCtx = document.getElementById('tempChart');
+    if (tempCtx) {
+        tempChart = new Chart(tempCtx, {
+            type: 'line',
+            data: {
+                labels: tempLabels,
+                datasets: [{
+                    label: 'Temperature °C',
+                    data: tempData,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    borderColor: 'rgba(0, 255, 200, 0.8)',
+                    backgroundColor: 'rgba(0, 255, 200, 0.1)',
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+
+    // Humidity Chart
+    const humCtx = document.getElementById('humChart');
+    if (humCtx) {
+        humChart = new Chart(humCtx, {
+            type: 'line',
+            data: {
+                labels: humLabels,
+                datasets: [{
+                    label: 'Humidity %',
+                    data: humData,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    borderColor: 'rgba(255, 155, 61, 0.8)',
+                    backgroundColor: 'rgba(255, 155, 61, 0.1)',
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    y: {
+                        min: 0,
+                        max: 100
+                    }
+                }
+            }
+        });
+    }
+}
+
 // ========== INITIALIZATION ==========
 
 /**
@@ -749,6 +1091,9 @@ function showLoading(show = true) {
  */
 async function initializeDashboard() {
     console.log('Initializing IoT Dashboard...');
+
+    // Initialize charts first
+    initializeCharts();
 
     // Initialize event listeners
     initializeEventListeners();
@@ -758,7 +1103,8 @@ async function initializeDashboard() {
     await Promise.all([
         fetchSystemInfo(true),
         fetchSensorData(),
-        fetchDeviceState()
+        fetchDeviceState(),
+        fetchDiagnostics()
     ]);
     showLoading(false);
 
@@ -768,6 +1114,7 @@ async function initializeDashboard() {
     startSensorPolling();
     startDevicePolling();
     startSystemPolling();
+    startDiagnosticsPolling();
 
     console.log('Dashboard initialized successfully');
     showToast('Dashboard connected to device', 'success');

@@ -1,0 +1,358 @@
+task_check_info.cpp
+
+#include "task_check_info.h"
+#include "mainserver.h"
+
+void Load_info_File()
+{
+  File file = LittleFS.open("/info.dat", "r");
+  if (!file)
+  {
+    return;
+  }
+
+  DynamicJsonDocument doc(4096);
+  DeserializationError error = deserializeJson(doc, file);
+  if (error)
+  {
+    Serial.print(F("deserializeJson() failed: "));
+  }
+  else
+  {
+    if (takeSystemContext(portMAX_DELAY))
+    {
+      systemContext.wifi_ssid = doc["WIFI_SSID"] | "";
+      systemContext.wifi_pass = doc["WIFI_PASS"] | "";
+      systemContext.core_iot_token = doc["CORE_IOT_TOKEN"] | "";
+      systemContext.core_iot_server = doc["CORE_IOT_SERVER"] | "";
+      systemContext.core_iot_port = doc["CORE_IOT_PORT"] | "";
+      systemContext.ap_ssid = doc["AP_SSID"] | String(SSID_AP);
+      systemContext.ap_pass = doc["AP_PASS"] | String(PASS_AP);
+      systemContext.read_interval = doc["READ_INTERVAL"] | 5000;
+      giveSystemContext();
+    }
+
+    Serial.println("✅ Info loaded from file:");
+    Serial.println(systemContext.wifi_ssid);
+    Serial.println(systemContext.wifi_pass);
+    Serial.println(systemContext.core_iot_token);
+    Serial.println(systemContext.core_iot_server);
+    Serial.println(systemContext.core_iot_port);
+    Serial.println(systemContext.ap_ssid);
+    Serial.println(systemContext.ap_pass);
+    Serial.println(systemContext.read_interval);
+  }
+  file.close();
+}
+
+void Delete_info_File()
+{
+  if (LittleFS.exists("/info.dat"))
+  {
+    LittleFS.remove("/info.dat");
+  }
+  ESP.restart();
+}
+
+void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT, String ap_ssid, String ap_pass, int read_interval)
+{
+  DynamicJsonDocument doc(4096);
+  doc["WIFI_SSID"] = wifi_ssid;
+  doc["WIFI_PASS"] = wifi_pass;
+  doc["CORE_IOT_TOKEN"] = CORE_IOT_TOKEN;
+  doc["CORE_IOT_SERVER"] = CORE_IOT_SERVER;
+  doc["CORE_IOT_PORT"] = CORE_IOT_PORT;
+  doc["AP_SSID"] = ap_ssid;
+  doc["AP_PASS"] = ap_pass;
+  doc["READ_INTERVAL"] = read_interval;
+
+  File configFile = LittleFS.open("/info.dat", "w");
+  if (configFile)
+  {
+    serializeJson(doc, configFile);
+    configFile.close();
+  }
+  else
+  {
+    Serial.println("Unable to save the configuration.");
+  }
+}
+
+bool check_info_File(bool check)
+{
+  if (!check)
+  {
+    if (!LittleFS.begin(true))
+    {
+      Serial.println("❌ Lỗi khởi động LittleFS!");
+      return false;
+    }
+    Load_info_File();
+  }
+
+  String wifi_ssid;
+  String wifi_pass;
+  if (takeSystemContext(portMAX_DELAY))
+  {
+    wifi_ssid = systemContext.wifi_ssid;
+    wifi_pass = systemContext.wifi_pass;
+    giveSystemContext();
+  }
+
+  if (wifi_ssid.isEmpty() && wifi_pass.isEmpty())
+  {
+    if (!check)
+    {
+      startAP();
+    }
+    return false;
+  }
+  return true;
+}
+
+task_toogle_boot.cpp
+
+#include "task_toogle_boot.h"
+
+#define BOOT 0
+
+void Task_Toogle_BOOT(void *pvParameters)
+{
+    unsigned long buttonPressStartTime = 0;
+    while (true)
+    {
+        if (digitalRead(BOOT) == LOW)
+        {
+            if (buttonPressStartTime == 0)
+            {
+                buttonPressStartTime = millis();
+            }
+            else if (millis() - buttonPressStartTime > 2000)
+            {
+                Serial.println("Button pressed for 2 seconds. Deleting info file and restarting...");
+                Delete_info_File();
+                vTaskDelete(NULL);
+            }
+        }
+        else
+        {
+            buttonPressStartTime = 0;
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
+}
+
+
+temp_humi_monitor.cpp
+
+#include "temp_humi_monitor.h"
+
+static DHT20 dht20;
+
+float calcHumidex(float T_air, float HR)
+{
+    float exponent = (7.5 * T_air) / (237.7 + T_air);
+    float e = 6.112 * std::pow(10, exponent) * (HR / 100.0);
+    return T_air + (5.0 / 9.0) * (e - 10.0);
+}
+
+void temp_humi_monitor(void *pvParameters)
+{
+    Wire.begin(11, 12);
+    Serial.begin(115200);
+    dht20.begin();
+
+    while (1)
+    {
+        dht20.read();
+        float temperature = dht20.getTemperature();
+        float humidity = dht20.getHumidity();
+
+        if (isnan(temperature) || isnan(humidity))
+        {
+            Serial.println("Failed to read from DHT sensor!");
+            temperature = humidity = -1;
+        }
+
+        const float humidex = calcHumidex(temperature, humidity);
+
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            systemContext.temperature = temperature;
+            systemContext.humidity = humidity;
+            systemContext.humidex = humidex;
+            giveSystemContext();
+        }
+
+        Serial.print("Humidity: ");
+        Serial.print(humidity);
+        Serial.print("%  Temperature: ");
+        Serial.print(temperature);
+        Serial.println("°C");
+        Serial.print("Humidex: ");
+        Serial.println(humidex);
+
+        int interval = 5000;
+        if (takeSystemContext(pdMS_TO_TICKS(100)))
+        {
+            interval = systemContext.read_interval;
+            giveSystemContext();
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(interval));
+    }
+}
+
+tinyml.cpp
+
+#include "tinyml.h"
+
+namespace
+{
+    tflite::ErrorReporter *error_reporter = nullptr;
+    const tflite::Model *model = nullptr;
+    tflite::MicroInterpreter *interpreter = nullptr;
+    TfLiteTensor *input = nullptr;
+    TfLiteTensor *output = nullptr;
+
+    constexpr int kTensorArenaSize = 8 * 1024;
+    uint8_t tensor_arena[kTensorArenaSize];
+}
+
+#define TEMP_MEAN 25.0780196
+#define TEMP_STD 4.29019663
+#define HUM_MEAN 76.77308542
+#define HUM_STD 11.34869143
+
+int8_t float_to_int8(float value, float scale, int zero_point)
+{
+    int32_t result = (int32_t)(value / scale + zero_point);
+    if (result > 127)
+        result = 127;
+    if (result < -128)
+        result = -128;
+    return (int8_t)result;
+}
+
+float get_output_value(TfLiteTensor *output, int i)
+{
+    int8_t val = output->data.int8[i];
+    return (val - output->params.zero_point) * output->params.scale;
+}
+
+int get_predicted_class(TfLiteTensor *output)
+{
+    int predicted = 0;
+    float max_val = get_output_value(output, 0);
+    for (int i = 1; i < 4; i++)
+    {
+        float val = get_output_value(output, i);
+        if (val > max_val)
+        {
+            max_val = val;
+            predicted = i;
+        }
+    }
+    return predicted;
+}
+
+void setupTinyML()
+{
+    Serial.println("TensorFlow Lite Init...");
+    static tflite::MicroErrorReporter micro_error_reporter;
+    error_reporter = &micro_error_reporter;
+
+    model = tflite::GetModel(dht_weather_prediction_model_tflite);
+    if (model->version() != TFLITE_SCHEMA_VERSION)
+    {
+        error_reporter->Report("Model schema mismatch!");
+        return;
+    }
+
+    static tflite::AllOpsResolver resolver;
+    static tflite::MicroInterpreter static_interpreter(
+        model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
+
+    interpreter = &static_interpreter;
+    if (interpreter->AllocateTensors() != kTfLiteOk)
+    {
+        error_reporter->Report("AllocateTensors() failed");
+        return;
+    }
+
+    input = interpreter->input(0);
+    output = interpreter->output(0);
+
+    Serial.print("Input scale: ");
+    Serial.println(input->params.scale);
+    Serial.print("Input zero_point: ");
+    Serial.println(input->params.zero_point);
+    Serial.println("TinyML ready.");
+}
+
+void tiny_ml_task(void *pvParameters)
+{
+    setupTinyML();
+
+    while (1)
+    {
+        if (!interpreter)
+        {
+            Serial.println("Interpreter not ready!");
+            vTaskDelay(1000);
+            continue;
+        }
+
+        float temp = 0;
+        float hum = 0;
+
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            temp = systemContext.temperature;
+            hum = systemContext.humidity;
+            giveSystemContext();
+        }
+
+        float temp_norm = (temp - TEMP_MEAN) / TEMP_STD;
+        float hum_norm = (hum - HUM_MEAN) / HUM_STD;
+
+        input->data.int8[0] = float_to_int8(temp_norm, input->params.scale, input->params.zero_point);
+        input->data.int8[1] = float_to_int8(hum_norm, input->params.scale, input->params.zero_point);
+
+        if (interpreter->Invoke() != kTfLiteOk)
+        {
+            error_reporter->Report("Invoke failed");
+            vTaskDelay(1000);
+            continue;
+        }
+
+        int predicted = get_predicted_class(output);
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            systemContext.weather_status = predicted;
+            giveSystemContext();
+        }
+
+        Serial.print("Temp: ");
+        Serial.print(temp);
+        Serial.print(" | Hum: ");
+        Serial.println(hum);
+
+        Serial.print("Probabilities: ");
+        for (int i = 0; i < 4; i++)
+        {
+            Serial.print(get_output_value(output, i), 4);
+            Serial.print(" ");
+        }
+        Serial.println();
+
+        Serial.print("Predicted: ");
+        Serial.print(predicted);
+        Serial.print(" => ");
+        Serial.println(get_weather_label(predicted));
+        Serial.println("----------------------");
+
+        vTaskDelay(5000);
+    }
+}
+
