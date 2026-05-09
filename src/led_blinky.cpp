@@ -3,6 +3,8 @@
 #define T_COLD_MAX 25
 #define T_HOT_MIN 32
 
+bool last_led_state = false;
+
 static int clamp(int val, int minVal, int maxVal)
 {
   if (val < minVal)
@@ -32,7 +34,11 @@ void led_blinky(void *pvParameters)
 
     if (mode == "MANUAL")
     {
-      digitalWrite(LED_GPIO, led_state ? HIGH : LOW);
+      if (led_state != last_led_state)
+      {
+        digitalWrite(LED_GPIO, led_state ? HIGH : LOW);
+        last_led_state = led_state;
+      }
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
@@ -50,7 +56,7 @@ void led_blinky(void *pvParameters)
       digitalWrite(LED_GPIO, LOW);
       vTaskDelay(pdMS_TO_TICKS(t_off));
     }
-    else if (T <= 32)
+    else if (T <= T_HOT_MIN)
     {
       int t_on = 120;
       int t_gap = 120;

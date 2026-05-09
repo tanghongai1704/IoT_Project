@@ -17,6 +17,7 @@ void initSystemContext()
     systemContext.core_iot_token = "";
     systemContext.core_iot_server = "";
     systemContext.core_iot_port = "";
+    systemContext.mqtt_target = "coreiot";
     systemContext.ap_ssid = SSID_AP;
     systemContext.ap_pass = String(PASS_AP);
     systemContext.read_interval = 5000;

@@ -37,13 +37,13 @@ void temp_humi_monitor(void *pvParameters)
             giveSystemContext();
         }
 
-        Serial.print("Humidity: ");
-        Serial.print(humidity);
-        Serial.print("%  Temperature: ");
-        Serial.print(temperature);
-        Serial.println("°C");
-        Serial.print("Humidex: ");
-        Serial.println(humidex);
+        // Serial.print("Humidity: ");
+        // Serial.print(humidity);
+        // Serial.print("%  Temperature: ");
+        // Serial.print(temperature);
+        // Serial.println("°C");
+        // Serial.print("Humidex: ");
+        // Serial.println(humidex);
 
         int interval = 5000;
         if (takeSystemContext(pdMS_TO_TICKS(100)))

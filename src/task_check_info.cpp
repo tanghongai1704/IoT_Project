@@ -24,6 +24,7 @@ void Load_info_File()
       systemContext.core_iot_token = doc["CORE_IOT_TOKEN"] | "";
       systemContext.core_iot_server = doc["CORE_IOT_SERVER"] | "";
       systemContext.core_iot_port = doc["CORE_IOT_PORT"] | "";
+      systemContext.mqtt_target = doc["MQTT_TARGET"] | "coreiot";
       systemContext.ap_ssid = doc["AP_SSID"] | String(SSID_AP);
       systemContext.ap_pass = doc["AP_PASS"] | String(PASS_AP);
       systemContext.read_interval = doc["READ_INTERVAL"] | 5000;
@@ -36,6 +37,7 @@ void Load_info_File()
     Serial.println(systemContext.core_iot_token);
     Serial.println(systemContext.core_iot_server);
     Serial.println(systemContext.core_iot_port);
+    Serial.println(systemContext.mqtt_target);
     Serial.println(systemContext.ap_ssid);
     Serial.println(systemContext.ap_pass);
     Serial.println(systemContext.read_interval);
@@ -52,7 +54,7 @@ void Delete_info_File()
   ESP.restart();
 }
 
-void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT, String ap_ssid, String ap_pass, int read_interval)
+void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT, String MQTT_TARGET, String ap_ssid, String ap_pass, int read_interval)
 {
   DynamicJsonDocument doc(4096);
   doc["WIFI_SSID"] = wifi_ssid;
@@ -60,6 +62,7 @@ void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, S
   doc["CORE_IOT_TOKEN"] = CORE_IOT_TOKEN;
   doc["CORE_IOT_SERVER"] = CORE_IOT_SERVER;
   doc["CORE_IOT_PORT"] = CORE_IOT_PORT;
+  doc["MQTT_TARGET"] = MQTT_TARGET;
   doc["AP_SSID"] = ap_ssid;
   doc["AP_PASS"] = ap_pass;
   doc["READ_INTERVAL"] = read_interval;

@@ -126,24 +126,24 @@ void tiny_ml_task(void *pvParameters)
             giveSystemContext();
         }
 
-        Serial.print("Temp: ");
-        Serial.print(temp);
-        Serial.print(" | Hum: ");
-        Serial.println(hum);
+        // Serial.print("Temp: ");
+        // Serial.print(temp);
+        // Serial.print(" | Hum: ");
+        // Serial.println(hum);
 
-        Serial.print("Probabilities: ");
-        for (int i = 0; i < 4; i++)
-        {
-            Serial.print(get_output_value(output, i), 4);
-            Serial.print(" ");
-        }
-        Serial.println();
+        // Serial.print("Probabilities: ");
+        // for (int i = 0; i < 4; i++)
+        // {
+        //     Serial.print(get_output_value(output, i), 4);
+        //     Serial.print(" ");
+        // }
+        // Serial.println();
 
-        Serial.print("Predicted: ");
-        Serial.print(predicted);
-        Serial.print(" => ");
-        Serial.println(get_weather_label(predicted));
-        Serial.println("----------------------");
+        // Serial.print("Predicted: ");
+        // Serial.print(predicted);
+        // Serial.print(" => ");
+        // Serial.println(get_weather_label(predicted));
+        // Serial.println("----------------------");
 
         vTaskDelay(5000);
     }

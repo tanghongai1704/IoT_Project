@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iot Assignment</title>
+    <title>ESP32 Dashboard</title>
     <script src="chart.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -25,9 +25,13 @@
             </div>
             <nav class="tabs">
                 <button id="navMainPage" class="nav-btn active" data-page="mainpage">Mainpage</button>
+                <button id="navControl" class="nav-btn" data-page="control">Control</button>
                 <button id="navConfig" class="nav-btn" data-page="config">Configuration</button>
             </nav>
         </header>
+
+
+
 
         <main class="content">
             <section id="mainpagePage" class="page active">
@@ -55,69 +59,6 @@
                     </div>
                 </article>
 
-                <article class="card">
-                    <div class="card-head">
-                        <div>
-                            <h2 class="card-title">Telemetry Core</h2>
-                            <p class="card-subtitle">Realtime humidity, temperature, and comfort state</p>
-                        </div><span class="card-meta">2s poll</span>
-                    </div>
-                    <div class="circuit"></div>
-                    <div class="grid-3">
-                        <div class="metric panel"><label>Temperature</label>
-                            <div class="metric-row">
-                                <div id="sensorTemp" class="metric-value">--</div><span class="metric-unit">°C</span>
-                            </div>
-                            <div id="sensorTempState" class="sensor-state state-normal">NORMAL</div>
-                        </div>
-                        <div class="metric panel"><label>Humidity</label>
-                            <div class="metric-row">
-                                <div id="sensorHum" class="metric-value">--</div><span class="metric-unit">%</span>
-                            </div>
-                            <div id="sensorHumState" class="sensor-state state-comfort">COMFORT</div>
-                        </div>
-                        <div class="metric panel"><label>Humidex</label>
-                            <div class="metric-row">
-                                <div id="sensorHumidex" class="metric-value">--</div>
-                            </div>
-                            <div id="sensorComfort" class="sensor-state state-easy">EASY</div>
-                        </div>
-                    </div>
-                    <div style="height: 30px;"></div>
-                    <div class="metric panel weather-center">
-                        <label>Weather Status</label>
-                        <div style="height: 10px;"></div>
-                        <div class="metric-row">
-                            <div id="sensorWeather" class="weather-value">UNKNOWN</div>
-                        </div>
-                    </div>
-                    <div class="circuit"></div>
-                    <div class="notice">
-                        <div id="comfortRecommendation">Loading recommendations...</div>
-                    </div>
-                </article>
-                <article class="card">
-                    <div class="card-head">
-                        <div>
-                            <h2 class="card-title">Realtime Analytics</h2>
-                            <p class="card-subtitle">
-                                Live temperature and humidity visualization
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="circuit"></div>
-
-                    <div class="chart-wrapper">
-                        <canvas id="tempChart"></canvas>
-                    </div>
-
-                    <div style="height:30px;"></div>
-
-                    <div class="chart-wrapper">
-                        <canvas id="humChart"></canvas>
-                    </div>
-                </article>
 
                 <article class="card">
                     <div class="card-head">
@@ -204,19 +145,77 @@
 
                         </div>
 
-                        <!-- UPTIME -->
-                        <div class="diag-item">
-
-                            <label>Uptime</label>
-
-                            <div id="diagUptime" class="diag-value">
-                                --
-                            </div>
-
-                        </div>
-
                     </div>
                 </article>
+
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2 class="card-title">Telemetry Core</h2>
+                            <p class="card-subtitle">Realtime humidity, temperature, and comfort state</p>
+                        </div><span class="card-meta">2s poll</span>
+                    </div>
+                    <div class="circuit"></div>
+                    <div class="grid-3">
+                        <div class="metric panel"><label>Temperature</label>
+                            <div class="metric-row">
+                                <div id="sensorTemp" class="metric-value">--</div><span class="metric-unit">°C</span>
+                            </div>
+                            <div id="sensorTempState" class="sensor-state state-normal">NORMAL</div>
+                        </div>
+                        <div class="metric panel"><label>Humidity</label>
+                            <div class="metric-row">
+                                <div id="sensorHum" class="metric-value">--</div><span class="metric-unit">%</span>
+                            </div>
+                            <div id="sensorHumState" class="sensor-state state-comfort">COMFORT</div>
+                        </div>
+                        <div class="metric panel"><label>Humidex</label>
+                            <div class="metric-row">
+                                <div id="sensorHumidex" class="metric-value">--</div>
+                            </div>
+                            <div id="sensorComfort" class="sensor-state state-easy">EASY</div>
+                        </div>
+                    </div>
+                    <div style="height: 30px;"></div>
+                    <div class="metric panel weather-center">
+                        <label>Weather Status</label>
+                        <div style="height: 10px;"></div>
+                        <div class="metric-row">
+                            <div id="sensorWeather" class="weather-value">UNKNOWN</div>
+                        </div>
+                    </div>
+                    <div class="circuit"></div>
+                    <div class="notice">
+                        <div id="comfortRecommendation">Loading recommendations...</div>
+                    </div>
+                </article>
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2 class="card-title">Realtime Analytics</h2>
+                            <p class="card-subtitle">
+                                Live temperature and humidity visualization
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="circuit"></div>
+
+                    <div class="chart-wrapper">
+                        <canvas id="tempChart"></canvas>
+                    </div>
+
+                    <div style="height:30px;"></div>
+
+                    <div class="chart-wrapper">
+                        <canvas id="humChart"></canvas>
+                    </div>
+                </article>
+
+
+            </section>
+            <section id="controlPage" class="page">
                 <article class="card">
                     <div class="card-head">
                         <div>
@@ -393,7 +392,6 @@
 
                 </article>
             </section>
-
             <section id="configPage" class="page">
                 <article class="card">
                     <div class="card-head">
@@ -404,17 +402,27 @@
                     </div>
                     <div class="circuit"></div>
                     <form id="configForm" class="grid-2">
+                        <div class="field panel config-target-field">
+                            <label>Connect Target</label>
+                            <div class="tabs compact config-target-tabs">
+                                <button type="button" id="configTargetCoreIOT" class="mode-btn active"
+                                    data-config-target="coreiot">to CoreIOT</button>
+                                <button type="button" id="configTargetBroker" class="mode-btn"
+                                    data-config-target="broker">to Broker</button>
+                            </div>
+                        </div>
                         <div class="field panel"><label for="configSsid">WiFi SSID</label><input type="text"
                                 id="configSsid" placeholder="Enter WiFi SSID" class="input"></div>
                         <div class="field panel"><label for="configPassword">WiFi Password</label><input type="password"
                                 id="configPassword" placeholder="Enter WiFi password" class="input"></div>
-                        <div class="field panel"><label for="configToken">Device Token (not applicable for local
-                                broker)</label><input type="text" id="configToken" placeholder="Enter device token"
-                                class="input"></div>
                         <div class="field panel"><label for="configServer">MQTT Server</label><input type="text"
                                 id="configServer" placeholder="Enter server address" class="input"></div>
                         <div class="field panel"><label for="configPort">MQTT Port</label><input type="number"
                                 id="configPort" placeholder="1883" value="1883" class="input"></div>
+                        <div id="configTokenField" class="field panel"><label for="configToken">Device Token (not
+                                applicable for local
+                                broker)</label><input type="text" id="configToken" placeholder="Enter device token"
+                                class="input"></div>
                         <div class="actions"><button type="button" id="configResetBtn"
                                 class="btn secondary">Reset</button><button type="button" id="configConnectBtn"
                                 class="btn full">Connect</button></div>
@@ -512,6 +520,12 @@
         </div>
         <div id="loadingOverlay" class="overlay hidden">
             <div class="loader"></div><span>Loading...</span>
+        </div>
+
+        <!-- UPTIME FIXED -->
+        <div class="uptime-widget">
+            <label>Uptime</label>
+            <div id="diagUptime" class="diag-value">--</div>
         </div>
     </div>
     <script src="script.js"></script>

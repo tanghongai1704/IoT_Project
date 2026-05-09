@@ -401,6 +401,22 @@ svg {
     align-items: end
 }
 
+.config-target-field {
+    grid-column: 1 / -1;
+}
+
+.config-target-tabs {
+    margin-top: .55rem;
+}
+
+.config-target-tabs .mode-btn {
+    flex: 1;
+}
+
+#configTokenField.hidden {
+    display: none !important;
+}
+
 .btn {
     min-width: 7rem;
     font-weight: 700;
@@ -1208,6 +1224,65 @@ svg {
     }
 }
 
+/* UPTIME WIDGET - Compact Version */
+.uptime-widget {
+    position: fixed;
+    bottom: 1rem;
+    left: 1rem;
+
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(0, 255, 200, 0.35);
+    border-radius: 12px;
+
+    padding: 10px 12px;
+    /* ↓ giảm mạnh */
+    backdrop-filter: blur(10px);
+
+    box-shadow: 0 0 12px rgba(0, 255, 200, 0.12);
+
+    z-index: 25;
+    min-width: 90px;
+    /* ↓ từ 160 → 90 */
+
+    transition: all 0.3s ease;
+    animation: slideInUptime 0.4s ease both;
+}
+
+.uptime-widget:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0, 255, 200, 0.6);
+    box-shadow: 0 0 18px rgba(0, 255, 200, 0.2);
+}
+
+.uptime-widget label {
+    display: block;
+    font-size: 10px;
+    /* ↓ nhỏ lại */
+    opacity: 0.7;
+    margin-bottom: 6px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.uptime-widget .diag-value {
+    font-size: 16px;
+    /* ↓ từ 28 → 16 */
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+@keyframes slideInUptime {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 @media (max-width: 900px) {
     .topbar {
         flex-direction: column;
@@ -1233,5 +1308,12 @@ svg {
     .nav-btn,
     .mode-btn {
         width: 100%
+    }
+
+    .uptime-widget {
+        bottom: 1rem;
+        right: 1rem;
+        min-width: 140px;
+        padding: 16px;
     }
 }

@@ -30,6 +30,7 @@ const state = {
         deviceToken: '',
         mqttServer: 'app.coreiot.io',
         mqttPort: 1883,
+        mqttTarget: 'coreiot',
         apName: 'ESP32 LOCAL',
         apPassword: '12345678',
         readInterval: 5000
@@ -92,6 +93,7 @@ let editingNeoTimeout = null;
 // Track if user is editing Config controls
 let isEditingConfig = false;
 let editingConfigTimeout = null;
+let configTargetMode = 'coreiot';
 
 // ========== CHART DATA ==========
 const tempLabels = [];
@@ -157,6 +159,7 @@ async function fetchSystemInfo(syncConfigForm = false) {
                 deviceToken: result.data.device_token || state.config.deviceToken || '',
                 mqttServer: result.data.mqtt_server || state.config.mqttServer || 'app.coreiot.io',
                 mqttPort: parseInt(result.data.mqtt_port) || state.config.mqttPort || 1883,
+                mqttTarget: result.data.mqtt_target || state.config.mqttTarget || 'coreiot',
                 apName: result.data.ap_name || state.config.apName || state.system.ssid || 'ESP32 LOCAL',
                 apPassword: result.data.ap_password || state.config.apPassword || '12345678',
                 readInterval: parseInt(result.data.read_interval) || state.config.readInterval || 5000
@@ -213,9 +216,15 @@ async function fetchSensorData() {
 
         // Update charts if they exist
         if (tempChart) {
+            const tempRange = getDynamicYRange(tempData);
+            tempChart.options.scales.y.min = Math.min(tempRange.min, 30);
+            tempChart.options.scales.y.max = Math.max(tempRange.max, 35);
             tempChart.update();
         }
         if (humChart) {
+            const humRange = getDynamicYRange(humData);
+            humChart.options.scales.y.min = Math.min(humRange.min, 40);
+            humChart.options.scales.y.max = Math.max(humRange.max, 80);
             humChart.update();
         }
     }
@@ -295,9 +304,12 @@ async function updateConfig(configData) {
     if (result.success) {
         state.config.wifiSsid = configData.ssid || state.config.wifiSsid;
         state.config.wifiPassword = configData.password || state.config.wifiPassword;
-        state.config.deviceToken = configData.token || state.config.deviceToken;
+        if (typeof configData.token !== 'undefined') {
+            state.config.deviceToken = configData.token;
+        }
         state.config.mqttServer = configData.server || state.config.mqttServer;
         state.config.mqttPort = configData.port || state.config.mqttPort;
+        state.config.mqttTarget = configData.target || state.config.mqttTarget;
         syncConfigFormFromState();
         showToast('Configuration updated successfully', 'success');
     } else {
@@ -387,6 +399,47 @@ function syncConfigFormFromState() {
             element.value = value;
         }
     });
+
+    setConfigTargetMode(state.config.mqttTarget || 'coreiot');
+}
+
+function setConfigTargetMode(mode) {
+    const normalizedMode = mode === 'broker' ? 'broker' : 'coreiot';
+    configTargetMode = normalizedMode;
+    state.config.mqttTarget = normalizedMode;
+
+    const coreBtn = document.getElementById('configTargetCoreIOT');
+    const brokerBtn = document.getElementById('configTargetBroker');
+    const tokenField = document.getElementById('configTokenField');
+    const tokenInput = document.getElementById('configToken');
+
+    if (coreBtn) {
+        coreBtn.classList.toggle('active', normalizedMode === 'coreiot');
+    }
+    if (brokerBtn) {
+        brokerBtn.classList.toggle('active', normalizedMode === 'broker');
+    }
+
+    if (tokenField) {
+        tokenField.classList.toggle('hidden', normalizedMode === 'broker');
+    }
+
+    if (tokenInput) {
+        tokenInput.required = normalizedMode === 'coreiot';
+    }
+
+    const serverInput = document.getElementById('configServer');
+    if (normalizedMode === 'coreiot') {
+        if (serverInput && !serverInput.value.trim()) {
+            serverInput.value = 'app.coreiot.io';
+            state.config.mqttServer = 'app.coreiot.io';
+        }
+    } else {
+        if (tokenInput) {
+            tokenInput.value = '';
+        }
+        state.config.deviceToken = '';
+    }
 }
 
 /**
@@ -1159,7 +1212,9 @@ function hexToRgb(hex) {
 function initializeEventListeners() {
     // Navigation
     document.getElementById('navMainPage').addEventListener('click', () => navigateTo('mainpage'));
+    document.getElementById('navControl').addEventListener('click', () => navigateTo('control'));
     document.getElementById('navConfig').addEventListener('click', () => navigateTo('config'));
+
 
     // System Info
     document.getElementById('updateApPasswordBtn').addEventListener('click', updateApPassword);
@@ -1193,6 +1248,15 @@ function initializeEventListeners() {
     document.getElementById('applyNeoBtn').addEventListener('click', applyNeoPixelChanges);
 
     // Config Form
+    document.getElementById('configTargetCoreIOT').addEventListener('click', () => {
+        setConfigEditingState();
+        setConfigTargetMode('coreiot');
+    });
+    document.getElementById('configTargetBroker').addEventListener('click', () => {
+        setConfigEditingState();
+        setConfigTargetMode('broker');
+    });
+
     document.getElementById('configResetBtn').addEventListener('click', resetConfigForm);
     document.getElementById('configConnectBtn').addEventListener('click', submitConfigForm);
 
@@ -1252,6 +1316,8 @@ function navigateTo(page) {
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     if (page === 'mainpage') {
         document.getElementById('navMainPage').classList.add('active');
+    } else if (page === 'control') {
+        document.getElementById('navControl').classList.add('active');
     } else {
         document.getElementById('navConfig').classList.add('active');
     }
@@ -1399,17 +1465,26 @@ function resetConfigForm() {
  * Submit config form
  */
 async function submitConfigForm() {
+    const isBrokerMode = configTargetMode === 'broker';
+    const tokenValue = document.getElementById('configToken').value;
+
     const configData = {
         ssid: document.getElementById('configSsid').value,
         password: document.getElementById('configPassword').value,
-        token: document.getElementById('configToken').value,
+        token: isBrokerMode ? '' : tokenValue,
         server: document.getElementById('configServer').value,
-        port: parseInt(document.getElementById('configPort').value) || 1883
+        port: parseInt(document.getElementById('configPort').value) || 1883,
+        target: configTargetMode
     };
 
     // Validate required fields
     if (!configData.ssid || !configData.password) {
         showToast('Please fill in SSID and password', 'warning');
+        return;
+    }
+
+    if (!isBrokerMode && !configData.token) {
+        showToast('Please fill in device token for CoreIOT mode', 'warning');
         return;
     }
 
@@ -1621,6 +1696,30 @@ function showLoading(show = true) {
 
 // ========== CHART INITIALIZATION ==========
 
+function getDynamicYRange(data, paddingPercent = 0.2) {
+    if (!data.length) {
+        return { min: 0, max: 100 };
+    }
+
+    let min = Math.min(...data);
+    let max = Math.max(...data);
+
+    // Nếu dữ liệu phẳng (min = max)
+    if (min === max) {
+        return {
+            min: min - 5,
+            max: max + 5
+        };
+    }
+
+    const padding = (max - min) * paddingPercent;
+
+    return {
+        min: min - padding,
+        max: max + padding
+    };
+}
+
 /**
  * Initialize charts
  */
@@ -1654,7 +1753,8 @@ function initializeCharts() {
                 animation: false,
                 scales: {
                     y: {
-                        beginAtZero: false
+                        min: 30,
+                        max: 35
                     }
                 }
             }
@@ -1684,8 +1784,8 @@ function initializeCharts() {
                 animation: false,
                 scales: {
                     y: {
-                        min: 0,
-                        max: 100
+                        min: 40,
+                        max: 80
                     }
                 }
             }

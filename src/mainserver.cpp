@@ -299,6 +299,7 @@ void handleSystem()
   String wifi_pass;
   String device_token;
   String mqtt_server;
+  String mqtt_target;
   int mqtt_port = 1883;
   int read_interval = 5000;
 
@@ -310,12 +311,13 @@ void handleSystem()
     wifi_pass = systemContext.wifi_pass;
     device_token = systemContext.core_iot_token;
     mqtt_server = systemContext.core_iot_server;
+    mqtt_target = systemContext.mqtt_target;
     mqtt_port = systemContext.core_iot_port.toInt();
     read_interval = systemContext.read_interval;
     giveSystemContext();
   }
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<512> doc;
   doc["ssid"] = ap_ssid;
   doc["ip"] = isAPMode
                   ? WiFi.softAPIP().toString()
@@ -326,6 +328,7 @@ void handleSystem()
   doc["device_token"] = device_token;
   doc["mqtt_server"] = mqtt_server;
   doc["mqtt_port"] = mqtt_port;
+  doc["mqtt_target"] = mqtt_target;
   doc["ap_name"] = ap_ssid;
   doc["read_interval"] = read_interval;
 
@@ -379,7 +382,7 @@ void handleSensorsAPI()
     giveSystemContext();
   }
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<512> doc;
   doc["temperature"] = temperature;
   doc["humidity"] = humidity;
   doc["humidex"] = humidex;
@@ -495,9 +498,26 @@ void handleConfig()
   String core_iot_token = doc["token"] | "";
   String core_iot_server = doc["server"] | "";
   int port = doc["port"] | 1883;
+  String mqtt_target = doc["target"] | "coreiot";
   String ap_ssid = doc["ap_ssid"] | String();
   String ap_pass = doc["ap_password"] | String();
   int read_interval = doc["read_interval"] | 0;
+
+  mqtt_target.toLowerCase();
+  if (mqtt_target != "coreiot" && mqtt_target != "broker")
+  {
+    mqtt_target = "coreiot";
+  }
+
+  if (mqtt_target == "broker")
+  {
+    core_iot_token = "";
+  }
+  else if (core_iot_token.isEmpty())
+  {
+    server.send(400, "application/json", "{\"error\":\"device token is required for coreiot target\"}");
+    return;
+  }
 
   String saved_ap_ssid;
   String saved_ap_pass;
@@ -510,6 +530,7 @@ void handleConfig()
     systemContext.core_iot_token = core_iot_token;
     systemContext.core_iot_server = core_iot_server;
     systemContext.core_iot_port = String(port);
+    systemContext.mqtt_target = mqtt_target;
     if (!ap_ssid.isEmpty())
       systemContext.ap_ssid = ap_ssid;
     if (!ap_pass.isEmpty())
@@ -523,7 +544,7 @@ void handleConfig()
     giveSystemContext();
   }
 
-  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, String(port), saved_ap_ssid, saved_ap_pass, saved_read_interval);
+  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, String(port), mqtt_target, saved_ap_ssid, saved_ap_pass, saved_read_interval);
 
   isAPMode = false;
   connecting = true;
@@ -565,6 +586,7 @@ void handleSettingsAPI()
   String core_iot_token;
   String core_iot_server;
   String core_iot_port;
+  String mqtt_target;
   String ap_ssid;
   String ap_pass;
   int read_interval;
@@ -576,13 +598,14 @@ void handleSettingsAPI()
     core_iot_token = systemContext.core_iot_token;
     core_iot_server = systemContext.core_iot_server;
     core_iot_port = systemContext.core_iot_port;
+    mqtt_target = systemContext.mqtt_target;
     ap_ssid = systemContext.ap_ssid;
     ap_pass = systemContext.ap_pass;
     read_interval = systemContext.read_interval;
     giveSystemContext();
   }
 
-  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, core_iot_port, ap_ssid, ap_pass, read_interval);
+  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, core_iot_port, mqtt_target, ap_ssid, ap_pass, read_interval);
 
   Serial.println("Settings updated:");
   Serial.println(ap_ssid);
@@ -760,6 +783,8 @@ void setupServer()
   server.on("/script.js", HTTP_GET, handleJS);
   server.on("/chart.js", HTTP_GET, handleChartJS);
   server.on("/styles.css", HTTP_GET, handleCSS);
+  server.on("/favicon.ico", HTTP_GET, []()
+            { server.send(204, "image/x-icon", ""); });
 
   server.on("/api/system", HTTP_GET, handleSystem);
   server.on("/api/sensors", HTTP_GET, handleSensorsAPI);
@@ -774,8 +799,15 @@ void setupServer()
   server.on("/scanwifi", HTTP_GET, handleScanWiFi);
   server.onNotFound([]()
                     {
-  server.sendHeader("Location", "/", true);
-  server.send(302, "text/plain", ""); });
+    if (isAPMode)
+    {
+        server.sendHeader("Location", "/", true);
+        server.send(302, "text/plain", "");
+    }
+    else
+    {
+        server.send(404, "text/plain", "Not found");
+    } });
 
   server.begin();
 }
@@ -866,7 +898,10 @@ void main_server_task(void *pvParameters)
 
   while (1)
   {
-    dnsServer.processNextRequest();
+    if (isAPMode)
+    {
+      dnsServer.processNextRequest();
+    }
     server.handleClient();
 
     if (digitalRead(BOOT_PIN) == LOW)

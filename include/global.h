@@ -18,6 +18,7 @@ typedef struct
     String core_iot_token;
     String core_iot_server;
     String core_iot_port;
+    String mqtt_target;
     String ap_ssid;
     String ap_pass;
     int read_interval;
