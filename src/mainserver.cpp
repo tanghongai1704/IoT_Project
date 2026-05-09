@@ -136,9 +136,23 @@ bool upsertGPIOConfig(int pin, const String &mode, int value, String &error)
       return false;
     }
 
-    pinMode(pin, OUTPUT);
-    ledcSetup(channel, PWM_FREQ, PWM_RESOLUTION);
-    ledcAttachPin(pin, channel);
+    // Only initialize PWM hardware if this is a new channel assignment
+    int existingIndex = findGPIOConfigIndex(pin);
+    if (existingIndex < 0 || gpioConfigs[existingIndex].mode != "PWM")
+    {
+      Serial.print("Assigning pin ");
+      Serial.print(pin);
+      Serial.print(" to PWM channel ");
+      Serial.print(channel);
+      Serial.print(" with value ");
+      Serial.println(normalizedValue);
+
+      pinMode(pin, OUTPUT);
+      ledcSetup(channel, PWM_FREQ, PWM_RESOLUTION);
+      ledcAttachPin(pin, channel);
+    }
+
+    // Always write the new PWM value
     ledcWrite(channel, normalizedValue);
   }
   else

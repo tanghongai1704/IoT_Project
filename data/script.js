@@ -13,6 +13,10 @@ const POLL_INTERVALS = {
     diagnostics: 5000 // 5 seconds
 };
 
+// PWM debounce timers to prevent rapid updates
+const pwmDebounceTimers = {};
+const PWM_DEBOUNCE_DELAY = 300; // milliseconds
+
 // ========== STATE MANAGEMENT ==========
 const state = {
     system: {
@@ -66,7 +70,8 @@ const state = {
         favorites: {},
         locks: {},
         events: [],
-        pendingUpdates: {}
+        pendingUpdates: {},
+        editingPWM: {}
     }
 };
 
@@ -729,8 +734,13 @@ function sanitizeGPIOPins(pins) {
 
             const oldRow = findGPIORow(pin.pin);
 
-            const mode = (pin.mode || 'INPUT').toUpperCase();
-            const value = Number(pin.value || 0);
+            const pending = state.gpioMeta.pendingUpdates?.[pin.pin];
+
+            // If there's a pending update, prefer its mode/value so UI shows the requested state immediately
+            const mode = pending ? (String(pending.mode || 'INPUT').toUpperCase()) : (String(pin.mode || 'INPUT').toUpperCase());
+
+            const isEditing = state.gpioMeta.editingPWM?.[pin.pin];
+            const value = isEditing ? oldRow?.value ?? pin.value : Number(pending ? pending.value : (pin.value || 0));
 
             const changed =
                 !oldRow ||
@@ -743,11 +753,9 @@ function sanitizeGPIOPins(pins) {
                 value,
                 pwm: mode === 'PWM' ? value : 0,
 
-                updatedAt: changed
-                    ? Date.now()
-                    : (oldRow?.updatedAt || Date.now()),
+                updatedAt: pending ? Date.now() : (changed ? Date.now() : (oldRow?.updatedAt || Date.now())),
 
-                isPending: false
+                isPending: !!pending
             };
         });
 }
@@ -921,7 +929,20 @@ async function sendGPIOUpdate(payload, options = {}) {
         showToast(`GPIO${payload.pin} updated`, 'success');
     }
 
-    await pollGPIOStatus(true);
+    // Update state from response instead of polling again
+    if (result.data && result.data.pin !== undefined) {
+        const index = state.gpio.findIndex(row => row.pin === result.data.pin);
+        if (index >= 0) {
+            state.gpio[index].mode = result.data.mode;
+            state.gpio[index].value = result.data.value;
+            state.gpio[index].updatedAt = Date.now();
+            updateGPIOUI();
+        }
+    } else {
+        // Fallback to polling if response doesn't have the expected data
+        await pollGPIOStatus(true);
+    }
+
     return result;
 }
 
@@ -1042,8 +1063,23 @@ async function handleGPIOAction(event) {
     }
 
     if (action === 'pwm') {
+        const pin = Number(target.dataset.gpioPin);
+        state.gpioMeta.editingPWM[pin] = true;
+
         const value = Number(target.value || 0);
-        await sendGPIOUpdate({ pin, mode: 'PWM', value }, { silent: true });
+
+        // Clear existing debounce timer for this pin
+        if (pwmDebounceTimers[pin]) {
+            clearTimeout(pwmDebounceTimers[pin]);
+        }
+
+        // Set new debounce timer
+        pwmDebounceTimers[pin] = setTimeout(async () => {
+            await sendGPIOUpdate({ pin, mode: 'PWM', value }, { silent: true });
+
+            delete state.gpioMeta.editingPWM[pin];
+            delete pwmDebounceTimers[pin];
+        }, PWM_DEBOUNCE_DELAY);
     }
 
     if (action === 'mode') {
@@ -1202,7 +1238,7 @@ function initializeEventListeners() {
             if (row) {
                 row.value = Number(event.target.value || 0);
                 row.updatedAt = Date.now();
-                updateGPIOUI();
+                // updateGPIOUI();
             }
         }
     });
