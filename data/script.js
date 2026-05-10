@@ -453,7 +453,89 @@ function updateSensorUI() {
     document.getElementById('sensorHumState').className = `sensor-state state-${state.sensors.stateHum.toLowerCase()}`;
 
     // Alert status
-    document.getElementById('sensorAlert').textContent = state.sensors.alert;
+    const alertValue =
+        (state.sensors.alert || 'SAFE')
+            .toUpperCase();
+
+    const panel =
+        document.querySelector('.alert-panel');
+
+    const level =
+        document.getElementById('sensorAlertLevel');
+
+    const title =
+        document.getElementById('sensorAlert');
+
+    const desc =
+        document.getElementById('sensorAlertDesc');
+
+    // RESET
+    panel.className = 'metric panel alert-panel';
+
+    level.textContent = alertValue;
+
+    switch (alertValue) {
+
+        case 'SAFE':
+
+            panel.classList.add('alert-safe');
+
+            title.textContent =
+                'Environment Stable';
+
+            desc.textContent =
+                'No dangerous conditions detected.';
+
+            break;
+
+        case 'CAUTION':
+
+            panel.classList.add('alert-caution');
+
+            title.textContent =
+                'Mild Discomfort';
+
+            desc.textContent =
+                'Fatigue possible with prolonged exposure';
+
+            break;
+
+        case 'EXTREME CAUTION':
+
+            panel.classList.add('alert-extreme-caution');
+
+            title.textContent =
+                'Heat Warning';
+
+            desc.textContent =
+                'Sunstroke, heat cramps, and heat exhaustion are likely with continued physical activity';
+
+            break;
+
+        case 'DANGER':
+
+            panel.classList.add('alert-danger');
+
+            title.textContent =
+                'Dangerous Conditions';
+
+            desc.textContent =
+                'Sunstroke, heat cramps, and heat exhaustion are possible. Heat stroke is likely with continued physical activity';
+
+            break;
+
+        case 'EXTREME DANGER':
+
+            panel.classList.add('alert-extreme-danger');
+
+            title.textContent =
+                'Critical Environment';
+
+            desc.textContent =
+                'Heat stroke is highly likely and imminent.';
+
+            break;
+    }
 
     // Update timestamp
     document.getElementById('sensorUpdateTime').textContent = `Last update: ${new Date().toLocaleTimeString()}`;
@@ -1698,8 +1780,8 @@ function initializeCharts() {
                     data: tempData,
                     tension: 0.3,
                     borderWidth: 2,
-                    borderColor: 'rgba(0, 255, 200, 0.8)',
-                    backgroundColor: 'rgba(0, 255, 200, 0.1)',
+                    borderColor: 'rgba(255, 155, 61, 0.8)',
+                    backgroundColor: 'rgba(255, 155, 61, 0.1)',
                     fill: true
                 }]
             },
@@ -1729,8 +1811,8 @@ function initializeCharts() {
                     data: humData,
                     tension: 0.3,
                     borderWidth: 2,
-                    borderColor: 'rgba(255, 155, 61, 0.8)',
-                    backgroundColor: 'rgba(255, 155, 61, 0.1)',
+                    borderColor: 'rgba(0, 255, 200, 0.8)',
+                    backgroundColor: 'rgba(0, 255, 200, 0.1)',
                     fill: true
                 }]
             },
