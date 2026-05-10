@@ -10,8 +10,7 @@ typedef struct
 {
     float temperature;
     float humidity;
-    float humidex;
-    int weather_status;
+    int alert_status;
 
     String wifi_ssid;
     String wifi_pass;
@@ -50,6 +49,6 @@ static inline void giveSystemContext()
     xSemaphoreGive(systemContext.mutex);
 }
 
-const char *get_weather_label(int label);
+const char *get_alert_status(int label);
 
 #endif

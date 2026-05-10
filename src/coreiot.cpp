@@ -352,19 +352,17 @@ void coreiot_task(void *pvParameters)
 
             float temperature = 0;
             float humidity = 0;
-            float humidex = 0;
-            int weather_status = 0;
+            int alert_status = 0;
 
             if (takeSystemContext(portMAX_DELAY))
             {
                 temperature = systemContext.temperature;
                 humidity = systemContext.humidity;
-                humidex = systemContext.humidex;
-                weather_status = systemContext.weather_status;
+                alert_status = systemContext.alert_status;
                 giveSystemContext();
             }
 
-            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"humidex\":" + String(humidex) + ",\"weather_status\":\"" + get_weather_label(weather_status) + "\"}";
+            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\"}";
 
             client.publish(topic_telemetry.c_str(), payload.c_str());
             // Serial.println("Published payload: " + payload);

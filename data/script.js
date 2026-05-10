@@ -38,11 +38,9 @@ const state = {
     sensors: {
         temperature: 0,
         humidity: 0,
-        humidex: 0,
         stateTemp: 'NORMAL',
         stateHum: 'COMFORT',
-        comfort: 'EASY',
-        weather: 'SUNNY'
+        alert: 'UNKNOWN'
     },
     devices: {
         mode: 'AUTO',
@@ -185,11 +183,9 @@ async function fetchSensorData() {
         state.sensors = {
             temperature: parseFloat(result.data.temperature) || 0,
             humidity: parseFloat(result.data.humidity) || 0,
-            humidex: parseFloat(result.data.humidex) || 0,
             stateTemp: result.data.state_temp || 'NORMAL',
             stateHum: result.data.state_hum || 'COMFORT',
-            comfort: result.data.comfort || 'EASY',
-            weather: result.data.weather || 'SUNNY'
+            alert: result.data.alert_status || 'UNKNOWN'
         };
         console.log('Updated state.sensors:', state.sensors);
         updateSensorUI();
@@ -456,15 +452,8 @@ function updateSensorUI() {
     document.getElementById('sensorHumState').textContent = state.sensors.stateHum;
     document.getElementById('sensorHumState').className = `sensor-state state-${state.sensors.stateHum.toLowerCase()}`;
 
-    // Humidex and Comfort
-    document.getElementById('sensorHumidex').textContent = state.sensors.humidex.toFixed(2);
-    document.getElementById('sensorComfort').textContent = state.sensors.comfort;
-    document.getElementById('sensorComfort').className = `sensor-state state-${state.sensors.comfort.toLowerCase()}`;
-
-    updateWeatherUI(state.sensors.weather);
-
-    // Update comfort recommendation
-    updateComfortRecommendation();
+    // Alert status
+    document.getElementById('sensorAlert').textContent = state.sensors.alert;
 
     // Update timestamp
     document.getElementById('sensorUpdateTime').textContent = `Last update: ${new Date().toLocaleTimeString()}`;
@@ -473,40 +462,7 @@ function updateSensorUI() {
 /**
  * Update comfort recommendation
  */
-function updateComfortRecommendation() {
-    const recommendations = {
-        'EASY': '💧 Stay hydrated and enjoy the comfort',
-        'STICKY': '💦 Drink more water - humidity is high',
-        'UNCOMFY': '😓 Limit strenuous activity',
-        'RISKY': '⚠️ Avoid outdoor work - conditions are unsafe'
-    };
 
-    const comfort = state.sensors.comfort || 'EASY';
-    document.getElementById('comfortRecommendation').textContent = recommendations[comfort] || recommendations['EASY'];
-}
-
-function getWeatherClass(weather) {
-    switch (weather.toLowerCase()) {
-        case "sunny": return "text-sunny";
-        case "cloudy": return "text-cloudy";
-        case "rain": return "text-rain";
-        case "storm": return "text-storm";
-        default: return "";
-    }
-}
-
-function updateWeatherUI(weather) {
-    const el = document.getElementById("sensorWeather");
-
-    // Set text
-    el.innerText = weather.toUpperCase();
-
-    // Reset class
-    el.className = "weather-value";
-
-    // Add màu
-    el.classList.add(getWeatherClass(weather));
-}
 
 function getHeapClass(heapPercent) {
     if (heapPercent >= 50) return 'diag-good';

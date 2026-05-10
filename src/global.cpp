@@ -9,8 +9,7 @@ void initSystemContext()
 {
     systemContext.temperature = 0;
     systemContext.humidity = 0;
-    systemContext.humidex = 0;
-    systemContext.weather_status = 0;
+    systemContext.alert_status = 0;
 
     systemContext.wifi_ssid = "";
     systemContext.wifi_pass = "";
@@ -45,18 +44,20 @@ void initSystemContext()
 }
 
 // ===== LABEL =====
-const char *get_weather_label(int label)
+const char *get_alert_status(int label)
 {
     switch (label)
     {
     case 0:
-        return "Sunny";
+        return "Safe";
     case 1:
-        return "Cloudy";
+        return "Caution";
     case 2:
-        return "Rain";
+        return "Extreme Caution";
     case 3:
-        return "Storm";
+        return "Danger";
+    case 4:
+        return "Extreme Danger";
     default:
         return "Unknown";
     }

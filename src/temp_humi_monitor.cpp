@@ -27,13 +27,10 @@ void temp_humi_monitor(void *pvParameters)
             temperature = humidity = -1;
         }
 
-        const float humidex = calcHumidex(temperature, humidity);
-
         if (takeSystemContext(portMAX_DELAY))
         {
             systemContext.temperature = temperature;
             systemContext.humidity = humidity;
-            systemContext.humidex = humidex;
             giveSystemContext();
         }
 

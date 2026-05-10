@@ -5,6 +5,7 @@
 
 #include "dht_anomaly_model.h"
 #include "weather_model.h"
+#include "TinyML_weather_model.h"
 #include "global.h"
 
 #include <TensorFlowLite_ESP32.h>

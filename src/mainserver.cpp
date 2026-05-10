@@ -370,26 +370,22 @@ void handleSensorsAPI()
 {
   float temperature = 0;
   float humidity = 0;
-  float humidex = 0;
-  int weather_status = 0;
+  int alert_status = 0;
 
   if (takeSystemContext(portMAX_DELAY))
   {
     temperature = systemContext.temperature;
     humidity = systemContext.humidity;
-    humidex = systemContext.humidex;
-    weather_status = systemContext.weather_status;
+    alert_status = systemContext.alert_status;
     giveSystemContext();
   }
 
   StaticJsonDocument<512> doc;
   doc["temperature"] = temperature;
   doc["humidity"] = humidity;
-  doc["humidex"] = humidex;
   doc["state_temp"] = getTempState(temperature);
   doc["state_hum"] = getHumState(humidity);
-  doc["comfort"] = getComfort(humidex);
-  doc["weather"] = get_weather_label(weather_status);
+  doc["alert_status"] = get_alert_status(alert_status);
 
   String out;
   serializeJson(doc, out);
