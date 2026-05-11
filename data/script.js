@@ -598,20 +598,6 @@ function getCPUBadgeClass(temp) {
     return 'state-hard';
 }
 
-function getWiFiBadgeClass(rssi) {
-    if (rssi >= -50) return 'state-easy';
-    if (rssi >= -60) return 'state-normal';
-    if (rssi >= -70) return 'state-comfort';
-    return 'state-hard';
-}
-
-function getCPUBadgeClass(temp) {
-    if (temp < 45) return 'state-easy';
-    if (temp < 60) return 'state-normal';
-    if (temp < 75) return 'state-comfort';
-    return 'state-hard';
-}
-
 function updateDiagnosticsUI() {
 
     // ===== ELEMENTS =====
