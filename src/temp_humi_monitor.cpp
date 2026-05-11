@@ -18,8 +18,8 @@ void temp_humi_monitor(void *pvParameters)
     while (1)
     {
         dht20.read();
-        float temperature = dht20.getTemperature();
-        float humidity = dht20.getHumidity();
+        float temperature = dht20.getTemperature() - 5;
+        float humidity = dht20.getHumidity() - 20;
 
         if (isnan(temperature) || isnan(humidity))
         {
@@ -32,6 +32,9 @@ void temp_humi_monitor(void *pvParameters)
             systemContext.temperature = temperature;
             systemContext.humidity = humidity;
             giveSystemContext();
+
+            // Signal that sensor data has been updated
+            xSemaphoreGive(systemContext.sensor_update_semaphore);
         }
 
         // Serial.print("Humidity: ");

@@ -7,7 +7,9 @@ static WiFiClient espClient;
 static PubSubClient client(espClient);
 static const char device_id[] = "ESP32_002";
 static String topic_rpc = String("devices/") + device_id + "/rpc";
+static String iot_topic_rpc = String("v1/devices/me/rpc/request/+");
 static String topic_telemetry = String("devices/") + device_id + "/telemetry";
+static String iot_topic_telemetry = String("v1/devices/me/telemetry");
 static String mqtt_server_url;
 static uint16_t mqtt_server_port = 1883;
 static String mqtt_token;
@@ -108,8 +110,8 @@ void reconnect()
         if (isConnected && isCoreIotTarget)
         {
             Serial.println("connected to CoreIOT Server!");
-            client.subscribe(topic_rpc.c_str());
-            Serial.println("Subscribed to " + topic_rpc);
+            client.subscribe(iot_topic_rpc.c_str());
+            Serial.println("Subscribed to " + iot_topic_rpc);
         }
         else if (isConnected)
         {
@@ -364,7 +366,14 @@ void coreiot_task(void *pvParameters)
 
             String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\"}";
 
-            client.publish(topic_telemetry.c_str(), payload.c_str());
+            if (getMqttTargetMode() == "coreiot")
+            {
+                client.publish(iot_topic_telemetry.c_str(), payload.c_str());
+            }
+            else
+            {
+                client.publish(topic_telemetry.c_str(), payload.c_str());
+            }
             // Serial.println("Published payload: " + payload);
         }
 

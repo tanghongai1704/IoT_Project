@@ -243,6 +243,13 @@ void tiny_ml_task(void *pvParameters)
             continue;
         }
 
+        // Wait for sensor update signal
+        if (xSemaphoreTake(systemContext.sensor_update_semaphore, pdMS_TO_TICKS(1000)) != pdTRUE)
+        {
+            // Timeout - check interpreter and continue waiting
+            continue;
+        }
+
         float temp = 0;
         float hum = 0;
         int month = 1;
@@ -266,11 +273,6 @@ void tiny_ml_task(void *pvParameters)
             vTaskDelay(1000);
             continue;
         }
-
-        // temp = 30;
-        // hum = 62.25;
-        // month = 9;
-        // hour = 21;
 
         float temp_norm = (temp - TEMP_MEAN) / TEMP_STD;
         float hum_norm = (hum - HUM_MEAN) / HUM_STD;
@@ -308,7 +310,5 @@ void tiny_ml_task(void *pvParameters)
 
         print_tensor_probabilities("Alert output", alert_output, kAlertClassCount, kAlertLabels);
         print_prediction_summary(alert_status);
-
-        vTaskDelay(5000);
     }
 }

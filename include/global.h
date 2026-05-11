@@ -33,6 +33,7 @@ typedef struct
 
     SemaphoreHandle_t mutex;
     SemaphoreHandle_t internet_semaphore;
+    SemaphoreHandle_t sensor_update_semaphore;
 } SystemContext;
 
 extern SystemContext systemContext;

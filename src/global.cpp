@@ -4,6 +4,7 @@ SystemContext systemContext;
 
 static StaticSemaphore_t xContextMutexBuffer;
 static StaticSemaphore_t xInternetSemaphoreBuffer;
+static StaticSemaphore_t xSensorUpdateSemaphoreBuffer;
 
 void initSystemContext()
 {
@@ -32,8 +33,9 @@ void initSystemContext()
 
     systemContext.mutex = xSemaphoreCreateMutexStatic(&xContextMutexBuffer);
     systemContext.internet_semaphore = xSemaphoreCreateBinaryStatic(&xInternetSemaphoreBuffer);
+    systemContext.sensor_update_semaphore = xSemaphoreCreateBinaryStatic(&xSensorUpdateSemaphoreBuffer);
 
-    if (systemContext.mutex == NULL || systemContext.internet_semaphore == NULL)
+    if (systemContext.mutex == NULL || systemContext.internet_semaphore == NULL || systemContext.sensor_update_semaphore == NULL)
     {
         Serial.println("❌ System context initialization failed");
         while (true)
