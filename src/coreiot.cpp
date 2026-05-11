@@ -16,6 +16,7 @@ static String mqtt_token;
 static String mqtt_target_mode = "coreiot";
 static char temp_led_state[50] = "";
 static char hum_led_state[50] = "";
+static int last_alert_status = -1;
 
 static String getCoreIotServerUrl()
 {
@@ -364,7 +365,10 @@ void coreiot_task(void *pvParameters)
                 giveSystemContext();
             }
 
-            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\"}";
+            bool alert_changed = (last_alert_status != alert_status) ? 'true' : 'false';
+            last_alert_status = alert_status;
+
+            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\",\"alert_changed\":" + String(alert_changed) + "\"}";
 
             if (getMqttTargetMode() == "coreiot")
             {

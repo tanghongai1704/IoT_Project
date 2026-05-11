@@ -2,13 +2,6 @@
 
 static DHT20 dht20;
 
-float calcHumidex(float T_air, float HR)
-{
-    float exponent = (7.5 * T_air) / (237.7 + T_air);
-    float e = 6.112 * std::pow(10, exponent) * (HR / 100.0);
-    return T_air + (5.0 / 9.0) * (e - 10.0);
-}
-
 void temp_humi_monitor(void *pvParameters)
 {
     Wire.begin(11, 12);
