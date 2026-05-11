@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 
-#include "weather_model.h"
 #include "TinyML_weather_model.h"
 #include "global.h"
 
