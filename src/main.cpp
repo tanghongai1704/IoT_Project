@@ -3,6 +3,7 @@
 #include "led_blinky.h"
 #include "neo_blinky.h"
 #include "temp_humi_monitor.h"
+#include "lcd_monitor.h"
 #include "mainserver.h"
 #include "tinyml.h"
 #include "coreiot.h"
@@ -20,6 +21,7 @@ void setup()
   // xTaskCreate(led_blinky, "Task LED Blink", 2048, NULL, 2, NULL);
   // xTaskCreate(neo_blinky, "Task NEO Blink", 2048, NULL, 2, NULL);
   xTaskCreate(temp_humi_monitor, "Task TEMP HUMI Monitor", 2048, NULL, 2, NULL);
+  xTaskCreate(lcd_monitor_task, "Task LCD Monitor", 2048, NULL, 2, NULL);
   xTaskCreate(main_server_task, "WebServer Task", 8192, NULL, 2, NULL);
   xTaskCreate(tiny_ml_task, "Tiny ML Task", 12288, NULL, 2, NULL);
   xTaskCreate(coreiot_task, "CoreIOT Task", 4096, NULL, 2, NULL);
