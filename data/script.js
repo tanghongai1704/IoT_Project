@@ -213,13 +213,13 @@ async function fetchSensorData() {
         // Update charts if they exist
         if (tempChart) {
             const tempRange = getDynamicYRange(tempData);
-            tempChart.options.scales.y.min = Math.min(tempRange.min, 30);
+            tempChart.options.scales.y.min = Math.min(tempRange.min, 25);
             tempChart.options.scales.y.max = Math.max(tempRange.max, 35);
             tempChart.update();
         }
         if (humChart) {
             const humRange = getDynamicYRange(humData);
-            humChart.options.scales.y.min = Math.min(humRange.min, 40);
+            humChart.options.scales.y.min = Math.min(humRange.min, 30);
             humChart.options.scales.y.max = Math.max(humRange.max, 80);
             humChart.update();
         }

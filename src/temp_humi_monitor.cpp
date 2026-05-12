@@ -11,8 +11,8 @@ void temp_humi_monitor(void *pvParameters)
     while (1)
     {
         dht20.read();
-        float temperature = dht20.getTemperature() - 5;
-        float humidity = dht20.getHumidity() - 20;
+        float temperature = dht20.getTemperature();
+        float humidity = dht20.getHumidity();
 
         if (isnan(temperature) || isnan(humidity))
         {
