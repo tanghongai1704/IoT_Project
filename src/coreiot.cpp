@@ -5,7 +5,7 @@
 
 static WiFiClient espClient;
 static PubSubClient client(espClient);
-static const char device_id[] = "ESP32_002";
+static const char device_id[] = "ESP32_001";
 static String topic_rpc = String("devices/") + device_id + "/rpc";
 static String iot_topic_rpc = String("v1/devices/me/rpc/request/+");
 static String topic_telemetry = String("devices/") + device_id + "/telemetry";
@@ -365,10 +365,10 @@ void coreiot_task(void *pvParameters)
                 giveSystemContext();
             }
 
-            bool alert_changed = (last_alert_status != alert_status) ? 'true' : 'false';
+            String alert_changed = (last_alert_status != alert_status) ? "true" : "false";
             last_alert_status = alert_status;
 
-            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\",\"alert_changed\":" + String(alert_changed) + "\"}";
+            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\",\"alert_changed\":" + alert_changed + "\"}";
 
             if (getMqttTargetMode() == "coreiot")
             {
