@@ -307,8 +307,11 @@ void tiny_ml_task(void *pvParameters)
         // Serial.print(month);
         // Serial.print(", hour=");
         // Serial.println(hour);
+        // String print_out_message = "-----------------------\n";
+        // print_out_message += "Input -> temp=" + String(temp, 2) + ", hum=" + String(hum, 2) + ", month=" + String(month) + ", hour=" + String(hour);
+        // Serial.println(print_out_message);
 
-        print_tensor_probabilities("Alert output", alert_output, kAlertClassCount, kAlertLabels);
-        print_prediction_summary(alert_status);
+        // print_tensor_probabilities("Alert output", alert_output, kAlertClassCount, kAlertLabels);
+        // print_prediction_summary(alert_status);
     }
 }
