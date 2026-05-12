@@ -345,7 +345,14 @@ void coreiot_task(void *pvParameters)
 
         unsigned long now = millis();
 
-        if (now - lastPublish >= 10000)
+        int publish_interval = 10000;
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            publish_interval = systemContext.publish_interval;
+            giveSystemContext();
+        }
+
+        if (now - lastPublish >= publish_interval)
         {
             lastPublish = now;
 

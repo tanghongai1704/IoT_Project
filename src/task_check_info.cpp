@@ -28,6 +28,7 @@ void Load_info_File()
       systemContext.ap_ssid = doc["AP_SSID"] | String(SSID_AP);
       systemContext.ap_pass = doc["AP_PASS"] | String(PASS_AP);
       systemContext.read_interval = doc["READ_INTERVAL"] | 5000;
+      systemContext.publish_interval = doc["PUBLISH_INTERVAL"] | 10000;
       giveSystemContext();
     }
 
@@ -54,7 +55,7 @@ void Delete_info_File()
   ESP.restart();
 }
 
-void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT, String MQTT_TARGET, String ap_ssid, String ap_pass, int read_interval)
+void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT, String MQTT_TARGET, String ap_ssid, String ap_pass, int read_interval, int publish_interval)
 {
   DynamicJsonDocument doc(4096);
   doc["WIFI_SSID"] = wifi_ssid;
@@ -66,6 +67,7 @@ void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, S
   doc["AP_SSID"] = ap_ssid;
   doc["AP_PASS"] = ap_pass;
   doc["READ_INTERVAL"] = read_interval;
+  doc["PUBLISH_INTERVAL"] = publish_interval;
 
   File configFile = LittleFS.open("/info.dat", "w");
   if (configFile)

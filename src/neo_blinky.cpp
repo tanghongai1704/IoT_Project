@@ -60,7 +60,7 @@ void neo_blinky(void *pvParameters)
         float T = 1000;
         float B = 0.5;
 
-        if (H < 40)
+        if (H < 50)
         {
             r = 255;
             g = 200;

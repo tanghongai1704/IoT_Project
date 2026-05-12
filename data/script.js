@@ -6,7 +6,7 @@
 // ========== CONFIG ==========
 const API_BASE = '/api';
 const POLL_INTERVALS = {
-    sensors: 2000,  // 2 seconds
+    sensors: 1000,  // 1 second
     devices: 2000,  // 2 seconds
     gpio: 2000,     // 2 seconds
     system: 5000,    // 5 seconds
@@ -33,7 +33,8 @@ const state = {
         mqttTarget: 'coreiot',
         apName: 'ESP32 LOCAL',
         apPassword: '12345678',
-        readInterval: 5000
+        readInterval: 5000,
+        publishInterval: 10000
     },
     sensors: {
         temperature: 0,
@@ -160,7 +161,8 @@ async function fetchSystemInfo(syncConfigForm = false) {
                 mqttTarget: result.data.mqtt_target || state.config.mqttTarget || 'coreiot',
                 apName: result.data.ap_name || state.config.apName || state.system.ssid || 'ESP32 LOCAL',
                 apPassword: result.data.ap_password || state.config.apPassword || '12345678',
-                readInterval: parseInt(result.data.read_interval) || state.config.readInterval || 5000
+                readInterval: parseInt(result.data.read_interval) || state.config.readInterval || 5000,
+                publishInterval: parseInt(result.data.publish_interval) || state.config.publishInterval || 10000
             };
         }
 
@@ -332,6 +334,9 @@ async function updateSettings(settingsData) {
         if (typeof settingsData.sensor_interval !== 'undefined') {
             state.config.readInterval = parseInt(settingsData.sensor_interval) || state.config.readInterval;
         }
+        if (typeof settingsData.publish_interval !== 'undefined') {
+            state.config.publishInterval = parseInt(settingsData.publish_interval) || state.config.publishInterval;
+        }
         syncConfigFormFromState();
         showToast('Settings updated successfully', 'success');
     } else {
@@ -386,7 +391,8 @@ function syncConfigFormFromState() {
         configPort: state.config.mqttPort,
         apNameInput: state.config.apName,
         apPasswordInput: state.config.apPassword,
-        sensorInterval: state.config.readInterval
+        sensorInterval: state.config.readInterval,
+        publishInterval: state.config.publishInterval
     };
 
     Object.entries(configMappings).forEach(([elementId, value]) => {
@@ -571,9 +577,9 @@ function getCPUClass(temp) {
 }
 
 function getCPUStatus(temp) {
-    if (temp < 45) return 'Cool';
+    if (temp < 40) return 'Cool';
     if (temp < 60) return 'Normal';
-    if (temp < 75) return 'Warm';
+    if (temp < 80) return 'Warm';
     return 'Hot';
 }
 
@@ -1287,7 +1293,7 @@ function initializeEventListeners() {
     // Lock config sync while user is typing
     const configFields = [
         'configSsid', 'configPassword', 'configToken', 'configServer',
-        'configPort', 'apNameInput', 'apPasswordInput', 'sensorInterval'
+        'configPort', 'apNameInput', 'apPasswordInput', 'sensorInterval', 'publishInterval'
     ];
     configFields.forEach((fieldId) => {
         const element = document.getElementById(fieldId);
@@ -1521,9 +1527,11 @@ async function submitConfigForm() {
  */
 async function saveSensorSettings() {
     const interval = parseInt(document.getElementById('sensorInterval').value) || 5000;
+    const publish = parseInt(document.getElementById('publishInterval').value) || 10000;
     state.config.readInterval = interval;
+    state.config.publishInterval = publish;
     clearConfigEditingState();
-    await updateSettings({ sensor_interval: interval });
+    await updateSettings({ sensor_interval: interval, publish_interval: publish });
 }
 
 

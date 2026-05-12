@@ -302,6 +302,7 @@ void handleSystem()
   String mqtt_target;
   int mqtt_port = 1883;
   int read_interval = 5000;
+  int publish_interval = 10000;
 
   if (takeSystemContext(portMAX_DELAY))
   {
@@ -314,6 +315,7 @@ void handleSystem()
     mqtt_target = systemContext.mqtt_target;
     mqtt_port = systemContext.core_iot_port.toInt();
     read_interval = systemContext.read_interval;
+    publish_interval = systemContext.publish_interval;
     giveSystemContext();
   }
 
@@ -331,6 +333,7 @@ void handleSystem()
   doc["mqtt_target"] = mqtt_target;
   doc["ap_name"] = ap_ssid;
   doc["read_interval"] = read_interval;
+  doc["publish_interval"] = publish_interval;
 
   String out;
   serializeJson(doc, out);
@@ -487,6 +490,7 @@ void handleConfig()
   String ap_ssid = doc["ap_ssid"] | String();
   String ap_pass = doc["ap_password"] | String();
   int read_interval = doc["read_interval"] | 0;
+  int publish_interval = doc["publish_interval"] | 0;
 
   mqtt_target.toLowerCase();
   if (mqtt_target != "coreiot" && mqtt_target != "broker")
@@ -522,6 +526,8 @@ void handleConfig()
       systemContext.ap_pass = ap_pass;
     if (read_interval > 0)
       systemContext.read_interval = read_interval;
+    if (publish_interval > 0)
+      systemContext.publish_interval = publish_interval;
 
     saved_ap_ssid = systemContext.ap_ssid;
     saved_ap_pass = systemContext.ap_pass;
@@ -529,7 +535,7 @@ void handleConfig()
     giveSystemContext();
   }
 
-  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, String(port), mqtt_target, saved_ap_ssid, saved_ap_pass, saved_read_interval);
+  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, String(port), mqtt_target, saved_ap_ssid, saved_ap_pass, saved_read_interval, systemContext.publish_interval);
 
   isAPMode = false;
   connecting = true;
@@ -563,6 +569,8 @@ void handleSettingsAPI()
       systemContext.ap_pass = doc["ap_password"].as<String>();
     if (doc["sensor_interval"])
       systemContext.read_interval = max(1, doc["sensor_interval"].as<int>());
+    if (doc["publish_interval"])
+      systemContext.publish_interval = max(100, doc["publish_interval"].as<int>());
     giveSystemContext();
   }
 
@@ -575,6 +583,7 @@ void handleSettingsAPI()
   String ap_ssid;
   String ap_pass;
   int read_interval;
+  int publish_interval;
 
   if (takeSystemContext(portMAX_DELAY))
   {
@@ -587,10 +596,11 @@ void handleSettingsAPI()
     ap_ssid = systemContext.ap_ssid;
     ap_pass = systemContext.ap_pass;
     read_interval = systemContext.read_interval;
+    publish_interval = systemContext.publish_interval;
     giveSystemContext();
   }
 
-  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, core_iot_port, mqtt_target, ap_ssid, ap_pass, read_interval);
+  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, core_iot_port, mqtt_target, ap_ssid, ap_pass, read_interval, publish_interval);
 
   Serial.println("Settings updated:");
   Serial.println(ap_ssid);

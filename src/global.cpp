@@ -21,6 +21,7 @@ void initSystemContext()
     systemContext.ap_ssid = SSID_AP;
     systemContext.ap_pass = String(PASS_AP);
     systemContext.read_interval = 5000;
+    systemContext.publish_interval = 10000;
 
     systemContext.is_wifi_connected = false;
     systemContext.led_state = false;

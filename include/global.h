@@ -21,6 +21,7 @@ typedef struct
     String ap_ssid;
     String ap_pass;
     int read_interval;
+    int publish_interval;
 
     bool is_wifi_connected;
     bool led_state;

@@ -298,15 +298,15 @@ void tiny_ml_task(void *pvParameters)
             giveSystemContext();
         }
 
-        Serial.println("----------------------");
-        Serial.print("Input -> temp=");
-        Serial.print(temp, 2);
-        Serial.print(", hum=");
-        Serial.print(hum, 2);
-        Serial.print(", month=");
-        Serial.print(month);
-        Serial.print(", hour=");
-        Serial.println(hour);
+        // Serial.println("----------------------");
+        // Serial.print("Input -> temp=");
+        // Serial.print(temp, 2);
+        // Serial.print(", hum=");
+        // Serial.print(hum, 2);
+        // Serial.print(", month=");
+        // Serial.print(month);
+        // Serial.print(", hour=");
+        // Serial.println(hour);
 
         print_tensor_probabilities("Alert output", alert_output, kAlertClassCount, kAlertLabels);
         print_prediction_summary(alert_status);
