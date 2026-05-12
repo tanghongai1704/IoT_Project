@@ -339,9 +339,9 @@ void handleSystem()
 
 String getTempState(float t)
 {
-  if (t < 20)
+  if (t < 28)
     return "COLD";
-  if (t < 35)
+  if (t < 32)
     return "NORMAL";
   return "HOT";
 }
@@ -353,17 +353,6 @@ String getHumState(float h)
   if (h < 70)
     return "COMFORT";
   return "HUMID";
-}
-
-String getComfort(float hx)
-{
-  if (hx < 30)
-    return "EASY";
-  if (hx < 35)
-    return "STICKY";
-  if (hx < 40)
-    return "UNCOMFY";
-  return "RISKY";
 }
 
 void handleSensorsAPI()

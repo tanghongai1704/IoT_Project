@@ -1,6 +1,6 @@
 #include "led_blinky.h"
 
-#define T_COLD_MAX 25
+#define T_COLD_MAX 28
 #define T_HOT_MIN 32
 
 bool last_led_state = false;

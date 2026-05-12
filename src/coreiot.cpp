@@ -151,11 +151,7 @@ void handle_temp_led_command()
             // Serial.println("Setting TEMP_LED to NORMAL pattern");
             // Nháy hai lần
             digitalWrite(LED_GPIO, HIGH);
-            vTaskDelay(pdMS_TO_TICKS(t_on));
-            digitalWrite(LED_GPIO, LOW);
-            vTaskDelay(pdMS_TO_TICKS(t_on));
-            digitalWrite(LED_GPIO, HIGH);
-            vTaskDelay(pdMS_TO_TICKS(t_on));
+            vTaskDelay(pdMS_TO_TICKS(t_on * 3));
             digitalWrite(LED_GPIO, LOW);
             vTaskDelay(pdMS_TO_TICKS(t_off));
         }
