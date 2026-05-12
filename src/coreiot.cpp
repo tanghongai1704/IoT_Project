@@ -368,7 +368,7 @@ void coreiot_task(void *pvParameters)
             String alert_changed = (last_alert_status != alert_status) ? "true" : "false";
             last_alert_status = alert_status;
 
-            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\",\"alert_changed\":" + alert_changed + "\"}";
+            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\",\"alert_changed\":" + alert_changed + "}";
 
             if (getMqttTargetMode() == "coreiot")
             {
