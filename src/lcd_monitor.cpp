@@ -4,7 +4,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-static LiquidCrystal_I2C lcd(0x27, 16, 2);
+static LiquidCrystal_I2C lcd(33, 16, 2);
 
 String showAlert(int label)
 {
@@ -64,7 +64,7 @@ void lcd_monitor_task(void *pvParameters)
 
         String line1 =
             "T:" + String(temperature, 1) +
-            " H:" + String(humidity, 0) + "%";
+            "C H:" + String(humidity, 1) + "%";
 
         while (line1.length() < 16)
             line1 += " ";
