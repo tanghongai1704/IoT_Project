@@ -1,358 +1,807 @@
-task_check_info.cpp
+main.cpp---
 
-#include "task_check_info.h"
+#include "global.h"
+
+#include "led_blinky.h"
+#include "neo_blinky.h"
+#include "temp_humi_monitor.h"
+#include "lcd_monitor.h"
 #include "mainserver.h"
+#include "tinyml.h"
+#include "coreiot.h"
 
-void Load_info_File()
-{
-  File file = LittleFS.open("/info.dat", "r");
-  if (!file)
-  {
-    return;
-  }
-
-  DynamicJsonDocument doc(4096);
-  DeserializationError error = deserializeJson(doc, file);
-  if (error)
-  {
-    Serial.print(F("deserializeJson() failed: "));
-  }
-  else
-  {
-    if (takeSystemContext(portMAX_DELAY))
-    {
-      systemContext.wifi_ssid = doc["WIFI_SSID"] | "";
-      systemContext.wifi_pass = doc["WIFI_PASS"] | "";
-      systemContext.core_iot_token = doc["CORE_IOT_TOKEN"] | "";
-      systemContext.core_iot_server = doc["CORE_IOT_SERVER"] | "";
-      systemContext.core_iot_port = doc["CORE_IOT_PORT"] | "";
-      systemContext.ap_ssid = doc["AP_SSID"] | String(SSID_AP);
-      systemContext.ap_pass = doc["AP_PASS"] | String(PASS_AP);
-      systemContext.read_interval = doc["READ_INTERVAL"] | 5000;
-      giveSystemContext();
-    }
-
-    Serial.println("✅ Info loaded from file:");
-    Serial.println(systemContext.wifi_ssid);
-    Serial.println(systemContext.wifi_pass);
-    Serial.println(systemContext.core_iot_token);
-    Serial.println(systemContext.core_iot_server);
-    Serial.println(systemContext.core_iot_port);
-    Serial.println(systemContext.ap_ssid);
-    Serial.println(systemContext.ap_pass);
-    Serial.println(systemContext.read_interval);
-  }
-  file.close();
-}
-
-void Delete_info_File()
-{
-  if (LittleFS.exists("/info.dat"))
-  {
-    LittleFS.remove("/info.dat");
-  }
-  ESP.restart();
-}
-
-void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT, String ap_ssid, String ap_pass, int read_interval)
-{
-  DynamicJsonDocument doc(4096);
-  doc["WIFI_SSID"] = wifi_ssid;
-  doc["WIFI_PASS"] = wifi_pass;
-  doc["CORE_IOT_TOKEN"] = CORE_IOT_TOKEN;
-  doc["CORE_IOT_SERVER"] = CORE_IOT_SERVER;
-  doc["CORE_IOT_PORT"] = CORE_IOT_PORT;
-  doc["AP_SSID"] = ap_ssid;
-  doc["AP_PASS"] = ap_pass;
-  doc["READ_INTERVAL"] = read_interval;
-
-  File configFile = LittleFS.open("/info.dat", "w");
-  if (configFile)
-  {
-    serializeJson(doc, configFile);
-    configFile.close();
-  }
-  else
-  {
-    Serial.println("Unable to save the configuration.");
-  }
-}
-
-bool check_info_File(bool check)
-{
-  if (!check)
-  {
-    if (!LittleFS.begin(true))
-    {
-      Serial.println("❌ Lỗi khởi động LittleFS!");
-      return false;
-    }
-    Load_info_File();
-  }
-
-  String wifi_ssid;
-  String wifi_pass;
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    wifi_ssid = systemContext.wifi_ssid;
-    wifi_pass = systemContext.wifi_pass;
-    giveSystemContext();
-  }
-
-  if (wifi_ssid.isEmpty() && wifi_pass.isEmpty())
-  {
-    if (!check)
-    {
-      startAP();
-    }
-    return false;
-  }
-  return true;
-}
-
-task_toogle_boot.cpp
-
+// include task
+#include "task_check_info.h"
 #include "task_toogle_boot.h"
 
-#define BOOT 0
-
-void Task_Toogle_BOOT(void *pvParameters)
+void setup()
 {
-    unsigned long buttonPressStartTime = 0;
-    while (true)
+  Serial.begin(115200);
+  initSystemContext();
+  check_info_File(0);
+
+  xTaskCreate(led_blinky, "Task LED Blink", 2048, NULL, 2, NULL);
+  xTaskCreate(neo_blinky, "Task NEO Blink", 2048, NULL, 2, NULL);
+  xTaskCreate(temp_humi_monitor, "Task TEMP HUMI Monitor", 2048, NULL, 2, NULL);
+  xTaskCreate(lcd_monitor_task, "Task LCD Monitor", 2048, NULL, 2, NULL);
+  xTaskCreate(main_server_task, "WebServer Task", 8192, NULL, 2, NULL);
+  xTaskCreate(tiny_ml_task, "Tiny ML Task", 12288, NULL, 2, NULL);
+  xTaskCreate(coreiot_task, "CoreIOT Task", 4096, NULL, 2, NULL);
+  xTaskCreate(Task_Toogle_BOOT, "Task_Toogle_BOOT", 4096, NULL, 2, NULL);
+}
+
+void loop()
+{
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+}
+
+global.cpp---
+#include "global.h"
+
+SystemContext systemContext;
+
+static StaticSemaphore_t xContextMutexBuffer;
+static StaticSemaphore_t xInternetSemaphoreBuffer;
+static StaticSemaphore_t xSensorUpdateSemaphoreBuffer;
+
+void initSystemContext()
+{
+    systemContext.temperature = 0;
+    systemContext.humidity = 0;
+    systemContext.alert_status = 0;
+
+    systemContext.wifi_ssid = "";
+    systemContext.wifi_pass = "";
+    systemContext.core_iot_token = "";
+    systemContext.core_iot_server = "";
+    systemContext.core_iot_port = "";
+    systemContext.mqtt_target = "coreiot";
+    systemContext.ap_ssid = SSID_AP;
+    systemContext.ap_pass = String(PASS_AP);
+    systemContext.read_interval = 5000;
+    systemContext.publish_interval = 10000;
+
+    systemContext.is_wifi_connected = false;
+    systemContext.led_state = false;
+    systemContext.device_mode = "AUTO";
+
+    systemContext.neo_r = 255;
+    systemContext.neo_g = 107;
+    systemContext.neo_b = 107;
+    systemContext.neo_brightness = 120;
+
+    systemContext.mutex = xSemaphoreCreateMutexStatic(&xContextMutexBuffer);
+    systemContext.internet_semaphore = xSemaphoreCreateBinaryStatic(&xInternetSemaphoreBuffer);
+    systemContext.sensor_update_semaphore = xSemaphoreCreateBinaryStatic(&xSensorUpdateSemaphoreBuffer);
+
+    if (systemContext.mutex == NULL || systemContext.internet_semaphore == NULL || systemContext.sensor_update_semaphore == NULL)
     {
-        if (digitalRead(BOOT) == LOW)
+        Serial.println("❌ System context initialization failed");
+        while (true)
         {
-            if (buttonPressStartTime == 0)
-            {
-                buttonPressStartTime = millis();
-            }
-            else if (millis() - buttonPressStartTime > 2000)
-            {
-                Serial.println("Button pressed for 2 seconds. Deleting info file and restarting...");
-                Delete_info_File();
-                vTaskDelete(NULL);
-            }
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+}
+
+// ===== LABEL =====
+const char *get_alert_status(int label)
+{
+    switch (label)
+    {
+    case 0:
+        return "Safe";
+    case 1:
+        return "Caution";
+    case 2:
+        return "Extreme Caution";
+    case 3:
+        return "Danger";
+    case 4:
+        return "Extreme Danger";
+    default:
+        return "Unknown";
+    }
+}
+
+coreiot.cpp
+#include "coreiot.h"
+#include "global.h"
+#include "led_blinky.h"
+#include "neo_blinky.h"
+
+static WiFiClient espClient;
+static PubSubClient client(espClient);
+static const char device_id[] = "ESP32_001";
+static String topic_rpc = String("devices/") + device_id + "/rpc";
+static String iot_topic_rpc = String("v1/devices/me/rpc/request/+");
+static String topic_telemetry = String("devices/") + device_id + "/telemetry";
+static String iot_topic_telemetry = String("v1/devices/me/telemetry");
+static String mqtt_server_url;
+static uint16_t mqtt_server_port = 1883;
+static String mqtt_token;
+static String mqtt_target_mode = "coreiot";
+static char temp_led_state[50] = "";
+static char hum_led_state[50] = "";
+static int last_alert_status = -1;
+
+static String getCoreIotServerUrl()
+{
+    String serverUrl;
+    if (takeSystemContext(portMAX_DELAY))
+    {
+        serverUrl = systemContext.core_iot_server;
+        giveSystemContext();
+    }
+    return serverUrl;
+}
+
+static String getCoreIotPort()
+{
+    String portString;
+    if (takeSystemContext(portMAX_DELAY))
+    {
+        portString = systemContext.core_iot_port;
+        giveSystemContext();
+    }
+    return portString;
+}
+
+static String getCoreIotToken()
+{
+    String token;
+    if (takeSystemContext(portMAX_DELAY))
+    {
+        token = systemContext.core_iot_token;
+        giveSystemContext();
+    }
+    return token;
+}
+
+static String getMqttTargetMode()
+{
+    String targetMode = "coreiot";
+    if (takeSystemContext(portMAX_DELAY))
+    {
+        targetMode = systemContext.mqtt_target;
+        giveSystemContext();
+    }
+    targetMode.toLowerCase();
+    if (targetMode != "broker")
+    {
+        targetMode = "coreiot";
+    }
+    return targetMode;
+}
+
+void reconnect()
+{
+    while (!client.connected())
+    {
+        mqtt_server_url = getCoreIotServerUrl();
+        mqtt_server_port = getCoreIotPort().toInt();
+        mqtt_token = getCoreIotToken();
+        mqtt_target_mode = getMqttTargetMode();
+        const bool isCoreIotTarget = (mqtt_target_mode == "coreiot");
+
+        client.setServer(mqtt_server_url.c_str(), mqtt_server_port);
+
+        Serial.print("Infomation debuffing: ");
+        Serial.print("Device ID: ");
+        Serial.println(device_id);
+        Serial.print("MQTT Target: ");
+        Serial.println(mqtt_target_mode);
+        Serial.print("MQTT Server: ");
+        Serial.println(mqtt_server_url);
+        Serial.print("MQTT Port: ");
+        Serial.println(mqtt_server_port);
+        Serial.println("Attempting MQTT connection...");
+
+        if (isCoreIotTarget && mqtt_token.isEmpty())
+        {
+            Serial.println("failed, token is empty for CoreIOT target");
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            continue;
+        }
+
+        bool isConnected = false;
+        if (isCoreIotTarget)
+        {
+            Serial.println("Using CoreIOT authentication: " + mqtt_token);
+            isConnected = client.connect(device_id, mqtt_token.c_str(), "");
         }
         else
         {
-            buttonPressStartTime = 0;
+            isConnected = client.connect(device_id);
         }
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+
+        if (isConnected && isCoreIotTarget)
+        {
+            Serial.println("connected to CoreIOT Server!");
+            client.subscribe(iot_topic_rpc.c_str());
+            Serial.println("Subscribed to " + iot_topic_rpc);
+        }
+        else if (isConnected)
+        {
+            Serial.println("connected to CoreIOT Server!");
+            client.subscribe(topic_rpc.c_str());
+            Serial.println("Subscribed to " + topic_rpc);
+        }
+        else
+        {
+            Serial.print("failed, rc=");
+            Serial.print(client.state());
+            Serial.println(" try again in 5 seconds");
+            vTaskDelay(pdMS_TO_TICKS(5000));
+        }
+    }
+}
+
+void handle_temp_led_command()
+{
+    pinMode(LED_GPIO, OUTPUT);
+    int t_on = 150;
+    int t_off = 1000;
+    while (1)
+    {
+        if (strcmp(temp_led_state, "cold") == 0)
+        {
+            // Serial.println("Setting TEMP_LED to COLD pattern");
+            // Nháy một lần
+            digitalWrite(LED_GPIO, HIGH);
+            vTaskDelay(pdMS_TO_TICKS(t_on));
+            digitalWrite(LED_GPIO, LOW);
+            vTaskDelay(pdMS_TO_TICKS(t_off));
+        }
+        else if (strcmp(temp_led_state, "normal") == 0)
+        {
+            // Serial.println("Setting TEMP_LED to NORMAL pattern");
+            // Nháy hai lần
+            digitalWrite(LED_GPIO, HIGH);
+            vTaskDelay(pdMS_TO_TICKS(t_on));
+            digitalWrite(LED_GPIO, LOW);
+            vTaskDelay(pdMS_TO_TICKS(t_on));
+            digitalWrite(LED_GPIO, HIGH);
+            vTaskDelay(pdMS_TO_TICKS(t_on));
+            digitalWrite(LED_GPIO, LOW);
+            vTaskDelay(pdMS_TO_TICKS(t_off));
+        }
+        else if (strcmp(temp_led_state, "hot") == 0)
+        {
+            // Serial.println("Setting TEMP_LED to HOT pattern");
+            // Nháy ba lần
+            for (int i = 0; i < 3; i++)
+            {
+                digitalWrite(LED_GPIO, HIGH);
+                vTaskDelay(pdMS_TO_TICKS(t_on));
+                digitalWrite(LED_GPIO, LOW);
+                vTaskDelay(pdMS_TO_TICKS(t_on));
+            }
+            vTaskDelay(pdMS_TO_TICKS(t_off));
+        }
+        else
+        {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+    }
+}
+
+void handle_humi_neo_command()
+{
+    Adafruit_NeoPixel strip(LED_COUNT, NEO_PIN, NEO_GRB + NEO_KHZ800);
+    strip.begin();
+    strip.clear();
+    strip.show();
+
+    int r = 0, g = 0, b = 0;
+    float T = 1000;
+    float B = 0.5;
+    int half = T / 2;
+
+    while (1)
+    {
+        if (strcmp(hum_led_state, "dry") == 0)
+        {
+            r = 255;
+            g = 200;
+            b = 0;
+        }
+        else if (strcmp(hum_led_state, "normal") == 0)
+        {
+            r = 0;
+            g = 255;
+            b = 0;
+        }
+        else if (strcmp(hum_led_state, "humid") == 0)
+        {
+            r = 0;
+            g = 100;
+            b = 255;
+        }
+        else
+        {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        uint32_t color = strip.Color(r, g, b);
+
+        strip.setPixelColor(0, color);
+        strip.show();
+        vTaskDelay(pdMS_TO_TICKS(half));
+
+        strip.setPixelColor(0, 0);
+        strip.show();
+        vTaskDelay(pdMS_TO_TICKS(half));
+    }
+}
+
+void callback(char *topic, byte *payload, unsigned int length)
+{
+    // Serial.print("Message arrived [");
+    // Serial.print(topic);
+    // Serial.println("] ");
+
+    char message[length + 1];
+    memcpy(message, payload, length);
+    message[length] = '\0';
+    // Serial.print("Payload: ");
+    // Serial.println(message);
+
+    StaticJsonDocument<256> doc;
+    DeserializationError error = deserializeJson(doc, message);
+    if (error)
+    {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+        return;
+    }
+
+    const char *method = doc["method"] | "";
+    /*
+    if (strcmp(method, "POWER") == 0)
+    {
+        const char *params = doc["params"] | "";
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            systemContext.device_mode = "MANUAL";
+            systemContext.led_state = (strcmp(params, "ON") == 0);
+            giveSystemContext();
+        }
+
+        if (strcmp(params, "ON") == 0)
+        {
+            Serial.println("Device turned ON.");
+        }
+        else
+        {
+            Serial.println("Device turned OFF.");
+        }
+    }
+    */
+
+    if (strcmp(method, "TEMP_LED") == 0)
+    {
+        Serial.print("Received TEMP_LED command with params: ");
+        Serial.println(doc["params"] | "");
+        const char *params = doc["params"] | "";
+        strncpy(temp_led_state, params, sizeof(temp_led_state) - 1);
+        temp_led_state[sizeof(temp_led_state) - 1] = '\0';
+    }
+    else if (strcmp(method, "HUMI_NEO") == 0)
+    {
+        Serial.print("Received HUMI_NEO command with params: ");
+        Serial.println(doc["params"] | "");
+        const char *params = doc["params"] | "";
+        strncpy(hum_led_state, params, sizeof(hum_led_state) - 1);
+        hum_led_state[sizeof(hum_led_state) - 1] = '\0';
+    }
+    else
+    {
+        // Serial.print("Unknown method: ");
+        // Serial.println(method);
+    }
+}
+
+void setup_coreiot()
+{
+    Serial.println("Waiting for internet access before CoreIOT startup...");
+    if (xSemaphoreTake(systemContext.internet_semaphore, portMAX_DELAY) == pdTRUE)
+    {
+        Serial.println("✅ Internet access granted to CoreIOT Task.");
+    }
+
+    String serverUrl;
+    String portString;
+    if (takeSystemContext(portMAX_DELAY))
+    {
+        serverUrl = systemContext.core_iot_server;
+        portString = systemContext.core_iot_port;
+        giveSystemContext();
+    }
+
+    mqtt_server_url = serverUrl;
+    mqtt_server_port = portString.toInt();
+
+    Serial.println("Connected to WiFi! Now connecting to CoreIOT Server...");
+    Serial.print("Connecting to CoreIOT Server: ");
+    Serial.println(serverUrl);
+    Serial.print(" on port ");
+    Serial.println(portString);
+
+    client.setServer(mqtt_server_url.c_str(), mqtt_server_port);
+    client.setCallback(callback);
+}
+
+void coreiot_task(void *pvParameters)
+{
+    setup_coreiot();
+
+    unsigned long lastPublish = 0;
+
+    // Start handling LED commands in separate tasks to avoid blocking the main loop
+    xTaskCreate([](void *)
+                { handle_temp_led_command(); }, "TEMP_LED_Command_Task", 4096, NULL, 1, NULL);
+    xTaskCreate([](void *)
+                { handle_humi_neo_command(); }, "HUMI_NEO_Command_Task", 4096, NULL, 1, NULL);
+
+    while (1)
+    {
+        if (!client.connected())
+        {
+            reconnect();
+        }
+        client.loop();
+
+        unsigned long now = millis();
+
+        int publish_interval = 10000;
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            publish_interval = systemContext.publish_interval;
+            giveSystemContext();
+        }
+
+        if (now - lastPublish >= publish_interval)
+        {
+            lastPublish = now;
+
+            float temperature = 0;
+            float humidity = 0;
+            int alert_status = 0;
+
+            if (takeSystemContext(portMAX_DELAY))
+            {
+                temperature = systemContext.temperature;
+                humidity = systemContext.humidity;
+                alert_status = systemContext.alert_status;
+                giveSystemContext();
+            }
+
+            String alert_changed = (last_alert_status != alert_status) ? "true" : "false";
+            last_alert_status = alert_status;
+
+            String payload = "{\"device\":\"" + String(device_id) + "\",\"temperature\":" + String(temperature) + ",\"humidity\":" + String(humidity) + ",\"alert_status\":\"" + get_alert_status(alert_status) + "\",\"alert_changed\":" + alert_changed + "}";
+
+            if (getMqttTargetMode() == "coreiot")
+            {
+                client.publish(iot_topic_telemetry.c_str(), payload.c_str());
+            }
+            else
+            {
+                client.publish(topic_telemetry.c_str(), payload.c_str());
+            }
+            // Serial.println("Published payload: " + payload);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
 
-temp_humi_monitor.cpp
+lcd_monitor.cpp
 
-#include "temp_humi_monitor.h"
+#include "lcd_monitor.h"
+#include "global.h"
 
-static DHT20 dht20;
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
-float calcHumidex(float T_air, float HR)
+static LiquidCrystal_I2C lcd(33, 16, 2);
+
+String showAlert(int label)
 {
-    float exponent = (7.5 * T_air) / (237.7 + T_air);
-    float e = 6.112 * std::pow(10, exponent) * (HR / 100.0);
-    return T_air + (5.0 / 9.0) * (e - 10.0);
+    switch (label)
+    {
+    case 0:
+        return "SAFE";
+
+    case 1:
+        return "CAUTION";
+
+    case 2:
+        return "X-CAUTION";
+
+    case 3:
+        return "DANGER";
+
+    case 4:
+        return "X-DANGER";
+
+    default:
+        return "UNKNOWN";
+    }
 }
 
-void temp_humi_monitor(void *pvParameters)
+void lcd_monitor_task(void *pvParameters)
 {
     Wire.begin(11, 12);
-    Serial.begin(115200);
-    dht20.begin();
+
+    lcd.begin();
+    lcd.backlight();
+    lcd.clear();
+
+    bool blinkState = true;
 
     while (1)
     {
-        dht20.read();
-        float temperature = dht20.getTemperature();
-        float humidity = dht20.getHumidity();
-
-        if (isnan(temperature) || isnan(humidity))
-        {
-            Serial.println("Failed to read from DHT sensor!");
-            temperature = humidity = -1;
-        }
-
-        const float humidex = calcHumidex(temperature, humidity);
+        float temperature = 0;
+        float humidity = 0;
+        int alert_status = 0;
 
         if (takeSystemContext(portMAX_DELAY))
         {
-            systemContext.temperature = temperature;
-            systemContext.humidity = humidity;
-            systemContext.humidex = humidex;
+            temperature = systemContext.temperature;
+            humidity = systemContext.humidity;
+            alert_status = systemContext.alert_status;
+
             giveSystemContext();
         }
 
-        Serial.print("Humidity: ");
-        Serial.print(humidity);
-        Serial.print("%  Temperature: ");
-        Serial.print(temperature);
-        Serial.println("°C");
-        Serial.print("Humidex: ");
-        Serial.println(humidex);
+        String alert = showAlert(alert_status);
 
-        int interval = 5000;
-        if (takeSystemContext(pdMS_TO_TICKS(100)))
+        // =========================
+        // ROW 0 (always visible)
+        // =========================
+        lcd.setCursor(0, 0);
+
+        String line1 =
+            "T:" + String(temperature, 1) +
+            "C H:" + String(humidity, 1) + "%";
+
+        while (line1.length() < 16)
+            line1 += " ";
+
+        lcd.print(line1);
+
+        // =========================
+        // ROW 1 (blinking alert)
+        // =========================
+        lcd.setCursor(0, 1);
+
+        String line2;
+
+        if (blinkState)
         {
-            interval = systemContext.read_interval;
-            giveSystemContext();
+            line2 = "ALERT:" + alert;
+        }
+        else
+        {
+            line2 = "";
         }
 
-        vTaskDelay(pdMS_TO_TICKS(interval));
+        while (line2.length() < 16)
+            line2 += " ";
+
+        lcd.print(line2);
+
+        blinkState = !blinkState;
+
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
-tinyml.cpp
+led_blinky.cpp
 
-#include "tinyml.h"
+#include "led_blinky.h"
 
-namespace
+#define T_COLD_MAX 28
+#define T_HOT_MIN 32
+
+bool last_led_state = false;
+
+static int clamp(int val, int minVal, int maxVal)
 {
-    tflite::ErrorReporter *error_reporter = nullptr;
-    const tflite::Model *model = nullptr;
-    tflite::MicroInterpreter *interpreter = nullptr;
-    TfLiteTensor *input = nullptr;
-    TfLiteTensor *output = nullptr;
-
-    constexpr int kTensorArenaSize = 8 * 1024;
-    uint8_t tensor_arena[kTensorArenaSize];
+  if (val < minVal)
+    return minVal;
+  if (val > maxVal)
+    return maxVal;
+  return val;
 }
 
-#define TEMP_MEAN 25.0780196
-#define TEMP_STD 4.29019663
-#define HUM_MEAN 76.77308542
-#define HUM_STD 11.34869143
-
-int8_t float_to_int8(float value, float scale, int zero_point)
+void led_blinky(void *pvParameters)
 {
-    int32_t result = (int32_t)(value / scale + zero_point);
-    if (result > 127)
-        result = 127;
-    if (result < -128)
-        result = -128;
-    return (int8_t)result;
-}
+  pinMode(LED_GPIO, OUTPUT);
 
-float get_output_value(TfLiteTensor *output, int i)
-{
-    int8_t val = output->data.int8[i];
-    return (val - output->params.zero_point) * output->params.scale;
-}
+  while (1)
+  {
+    String mode;
+    bool led_state = false;
+    float temperature = 0;
 
-int get_predicted_class(TfLiteTensor *output)
-{
-    int predicted = 0;
-    float max_val = get_output_value(output, 0);
-    for (int i = 1; i < 4; i++)
+    if (takeSystemContext(portMAX_DELAY))
     {
-        float val = get_output_value(output, i);
-        if (val > max_val)
-        {
-            max_val = val;
-            predicted = i;
-        }
+      mode = systemContext.device_mode;
+      led_state = systemContext.led_state;
+      temperature = systemContext.temperature;
+      giveSystemContext();
     }
-    return predicted;
+
+    if (mode == "MANUAL")
+    {
+      if (led_state != last_led_state)
+      {
+        digitalWrite(LED_GPIO, led_state ? HIGH : LOW);
+        last_led_state = led_state;
+      }
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
+    float T = temperature;
+
+    if (T < T_COLD_MAX)
+    {
+      int t_on = 150;
+      int t_off = 1500 - 120 * (T - 15);
+      t_off = clamp(t_off, 200, 2000);
+
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_off));
+    }
+    else if (T <= T_HOT_MIN)
+    {
+      int t_on = 120;
+      int t_gap = 120;
+      int t_rest = 800 - 50 * (T - 25);
+      t_rest = clamp(t_rest, 200, 1000);
+
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_gap));
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_rest));
+    }
+    else
+    {
+      int N = 3 + (T - 32) / 2;
+      N = clamp(N, 3, 8);
+
+      int t_blink = 150 - 11 * (T - 32);
+      t_blink = clamp(t_blink, 40, 150);
+
+      for (int i = 0; i < N; i++)
+      {
+        digitalWrite(LED_GPIO, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(t_blink));
+        digitalWrite(LED_GPIO, LOW);
+        vTaskDelay(pdMS_TO_TICKS(t_blink));
+      }
+
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
+  }
 }
 
-void setupTinyML()
+neo_blinky.cpp
+
+#include "neo_blinky.h"
+#include "global.h"
+
+static float clampf(float v, float a, float b)
 {
-    Serial.println("TensorFlow Lite Init...");
-    static tflite::MicroErrorReporter micro_error_reporter;
-    error_reporter = &micro_error_reporter;
-
-    model = tflite::GetModel(dht_weather_prediction_model_tflite);
-    if (model->version() != TFLITE_SCHEMA_VERSION)
-    {
-        error_reporter->Report("Model schema mismatch!");
-        return;
-    }
-
-    static tflite::AllOpsResolver resolver;
-    static tflite::MicroInterpreter static_interpreter(
-        model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
-
-    interpreter = &static_interpreter;
-    if (interpreter->AllocateTensors() != kTfLiteOk)
-    {
-        error_reporter->Report("AllocateTensors() failed");
-        return;
-    }
-
-    input = interpreter->input(0);
-    output = interpreter->output(0);
-
-    Serial.print("Input scale: ");
-    Serial.println(input->params.scale);
-    Serial.print("Input zero_point: ");
-    Serial.println(input->params.zero_point);
-    Serial.println("TinyML ready.");
+    if (v < a)
+        return a;
+    if (v > b)
+        return b;
+    return v;
 }
 
-void tiny_ml_task(void *pvParameters)
+static uint32_t getColor(Adafruit_NeoPixel &strip, int r, int g, int b, float brightness)
 {
-    setupTinyML();
+    r = (int)(r * brightness);
+    g = (int)(g * brightness);
+    b = (int)(b * brightness);
+    return strip.Color(r, g, b);
+}
+
+void neo_blinky(void *pvParameters)
+{
+    Adafruit_NeoPixel strip(LED_COUNT, NEO_PIN, NEO_GRB + NEO_KHZ800);
+    strip.begin();
+    strip.clear();
+    strip.show();
 
     while (1)
     {
-        if (!interpreter)
-        {
-            Serial.println("Interpreter not ready!");
-            vTaskDelay(1000);
-            continue;
-        }
-
-        float temp = 0;
-        float hum = 0;
+        String mode;
+        int neo_r = 0;
+        int neo_g = 0;
+        int neo_b = 0;
+        int neo_brightness = 0;
+        float humidity = 0;
 
         if (takeSystemContext(portMAX_DELAY))
         {
-            temp = systemContext.temperature;
-            hum = systemContext.humidity;
+            mode = systemContext.device_mode;
+            neo_r = systemContext.neo_r;
+            neo_g = systemContext.neo_g;
+            neo_b = systemContext.neo_b;
+            neo_brightness = systemContext.neo_brightness;
+            humidity = systemContext.humidity;
             giveSystemContext();
         }
 
-        float temp_norm = (temp - TEMP_MEAN) / TEMP_STD;
-        float hum_norm = (hum - HUM_MEAN) / HUM_STD;
-
-        input->data.int8[0] = float_to_int8(temp_norm, input->params.scale, input->params.zero_point);
-        input->data.int8[1] = float_to_int8(hum_norm, input->params.scale, input->params.zero_point);
-
-        if (interpreter->Invoke() != kTfLiteOk)
+        if (mode == "MANUAL")
         {
-            error_reporter->Report("Invoke failed");
-            vTaskDelay(1000);
+            float brightness = clampf(neo_brightness / 255.0f, 0.0, 1.0);
+            uint32_t color = getColor(strip, neo_r, neo_g, neo_b, brightness);
+            strip.setPixelColor(0, color);
+            strip.show();
+            vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
-        int predicted = get_predicted_class(output);
-        if (takeSystemContext(portMAX_DELAY))
+        float H = humidity;
+        int r = 0, g = 0, b = 0;
+        float T = 1000;
+        float B = 0.5;
+
+        if (H < 50)
         {
-            systemContext.weather_status = predicted;
-            giveSystemContext();
+            r = 255;
+            g = 200;
+            b = 0;
+            T = 1500 - 20 * (40 - H);
+            B = 0.4 + 0.01 * H;
+        }
+        else if (H <= 70)
+        {
+            r = 0;
+            g = 255;
+            b = 0;
+            T = 1000 - 20 * abs(H - 60);
+            B = 0.6 + 0.005 * abs(H - 60);
+        }
+        else
+        {
+            r = 0;
+            g = 100;
+            b = 255;
+            T = 700 - 8 * (H - 70);
+            B = 0.7 + 0.003 * (H - 70);
         }
 
-        Serial.print("Temp: ");
-        Serial.print(temp);
-        Serial.print(" | Hum: ");
-        Serial.println(hum);
+        T = clampf(T, 20, 2000);
+        B = clampf(B, 0.1, 1.0);
 
-        Serial.print("Probabilities: ");
-        for (int i = 0; i < 4; i++)
-        {
-            Serial.print(get_output_value(output, i), 4);
-            Serial.print(" ");
-        }
-        Serial.println();
+        uint32_t color = getColor(strip, r, g, b, B);
+        int half = T / 2;
 
-        Serial.print("Predicted: ");
-        Serial.print(predicted);
-        Serial.print(" => ");
-        Serial.println(get_weather_label(predicted));
-        Serial.println("----------------------");
+        strip.setPixelColor(0, color);
+        strip.show();
+        vTaskDelay(pdMS_TO_TICKS(half));
 
-        vTaskDelay(5000);
+        strip.setPixelColor(0, 0);
+        strip.show();
+        vTaskDelay(pdMS_TO_TICKS(half));
     }
 }
+
 

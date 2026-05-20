@@ -1,791 +1,176 @@
-main.cpp
+#ifndef __COREIOT_H__
+#define __COREIOT_H__
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include "global.h"
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+
+
+void coreiot_task(void *pvParameters);
+
+#endif
+
+#ifndef __GLOBAL_H__
+#define __GLOBAL_H__
+
+#include <Arduino.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+
+typedef struct
+{
+    float temperature;
+    float humidity;
+    int alert_status;
+
+    String wifi_ssid;
+    String wifi_pass;
+    String core_iot_token;
+    String core_iot_server;
+    String core_iot_port;
+    String mqtt_target;
+    String ap_ssid;
+    String ap_pass;
+    int read_interval;
+    int publish_interval;
+
+    bool is_wifi_connected;
+    bool led_state;
+    String device_mode;
+
+    int neo_r;
+    int neo_g;
+    int neo_b;
+    int neo_brightness;
+
+    SemaphoreHandle_t mutex;
+    SemaphoreHandle_t internet_semaphore;
+    SemaphoreHandle_t sensor_update_semaphore;
+} SystemContext;
+
+extern SystemContext systemContext;
+
+void initSystemContext();
+
+static inline bool takeSystemContext(TickType_t timeout = portMAX_DELAY)
+{
+    return xSemaphoreTake(systemContext.mutex, timeout) == pdTRUE;
+}
+
+static inline void giveSystemContext()
+{
+    xSemaphoreGive(systemContext.mutex);
+}
+
+const char *get_alert_status(int label);
+
+#endif
+
+#ifndef LCD_MONITOR_H
+#define LCD_MONITOR_H
 
 #include "global.h"
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
-#include "led_blinky.h"
-#include "neo_blinky.h"
-#include "temp_humi_monitor.h"
-#include "mainserver.h"
-#include "tinyml.h"
-#include "coreiot.h"
+void lcd_monitor_task(void *pvParameters);
 
-// include task
-#include "task_check_info.h"
-#include "task_toogle_boot.h"
+#endif // LCD_MONITOR_H
 
-void setup()
-{
-  Serial.begin(115200);
-  initSystemContext();
-  check_info_File(0);
-
-  // xTaskCreate(led_blinky, "Task LED Blink", 2048, NULL, 2, NULL);
-  // xTaskCreate(neo_blinky, "Task NEO Blink", 2048, NULL, 2, NULL);
-  xTaskCreate(temp_humi_monitor, "Task TEMP HUMI Monitor", 2048, NULL, 2, NULL);
-  xTaskCreate(main_server_task, "WebServer Task", 8192, NULL, 2, NULL);
-  xTaskCreate(tiny_ml_task, "Tiny ML Task", 12288, NULL, 2, NULL);
-  xTaskCreate(coreiot_task, "CoreIOT Task", 4096, NULL, 2, NULL);
-  xTaskCreate(Task_Toogle_BOOT, "Task_Toogle_BOOT", 4096, NULL, 2, NULL);
-}
-
-void loop()
-{
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-}
-
-global.cpp
-
+#ifndef __LED_BLINKY__
+#define __LED_BLINKY__
+#include <Arduino.h>
 #include "global.h"
-
-SystemContext systemContext;
-
-static StaticSemaphore_t xContextMutexBuffer;
-static StaticSemaphore_t xInternetSemaphoreBuffer;
-
-void initSystemContext()
-{
-    systemContext.temperature = 0;
-    systemContext.humidity = 0;
-    systemContext.humidex = 0;
-    systemContext.weather_status = 0;
-
-    systemContext.wifi_ssid = "";
-    systemContext.wifi_pass = "";
-    systemContext.core_iot_token = "";
-    systemContext.core_iot_server = "";
-    systemContext.core_iot_port = "";
-    systemContext.ap_ssid = SSID_AP;
-    systemContext.ap_pass = String(PASS_AP);
-    systemContext.read_interval = 5000;
-
-    systemContext.is_wifi_connected = false;
-    systemContext.led_state = false;
-    systemContext.device_mode = "AUTO";
-
-    systemContext.neo_r = 255;
-    systemContext.neo_g = 107;
-    systemContext.neo_b = 107;
-    systemContext.neo_brightness = 120;
-
-    systemContext.mutex = xSemaphoreCreateMutexStatic(&xContextMutexBuffer);
-    systemContext.internet_semaphore = xSemaphoreCreateBinaryStatic(&xInternetSemaphoreBuffer);
-
-    if (systemContext.mutex == NULL || systemContext.internet_semaphore == NULL)
-    {
-        Serial.println("❌ System context initialization failed");
-        while (true)
-        {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
-    }
-}
-
-// ===== LABEL =====
-const char *get_weather_label(int label)
-{
-    switch (label)
-    {
-    case 0:
-        return "Sunny";
-    case 1:
-        return "Cloudy";
-    case 2:
-        return "Rain";
-    case 3:
-        return "Storm";
-    default:
-        return "Unknown";
-    }
-}
+#define LED_GPIO 48
+void led_blinky(void *pvParameters);
 
 
-led_blinky.cpp
+#endif
 
-#include "led_blinky.h"
-
-#define T_COLD_MAX 25
-#define T_HOT_MIN 32
-
-static int clamp(int val, int minVal, int maxVal)
-{
-  if (val < minVal)
-    return minVal;
-  if (val > maxVal)
-    return maxVal;
-  return val;
-}
-
-void led_blinky(void *pvParameters)
-{
-  pinMode(LED_GPIO, OUTPUT);
-
-  while (1)
-  {
-    String mode;
-    bool led_state = false;
-    float temperature = 0;
-
-    if (takeSystemContext(portMAX_DELAY))
-    {
-      mode = systemContext.device_mode;
-      led_state = systemContext.led_state;
-      temperature = systemContext.temperature;
-      giveSystemContext();
-    }
-
-    if (mode == "MANUAL")
-    {
-      digitalWrite(LED_GPIO, led_state ? HIGH : LOW);
-      vTaskDelay(pdMS_TO_TICKS(100));
-      continue;
-    }
-
-    float T = temperature;
-
-    if (T < T_COLD_MAX)
-    {
-      int t_on = 150;
-      int t_off = 1500 - 120 * (T - 15);
-      t_off = clamp(t_off, 200, 2000);
-
-      digitalWrite(LED_GPIO, HIGH);
-      vTaskDelay(pdMS_TO_TICKS(t_on));
-      digitalWrite(LED_GPIO, LOW);
-      vTaskDelay(pdMS_TO_TICKS(t_off));
-    }
-    else if (T <= 32)
-    {
-      int t_on = 120;
-      int t_gap = 120;
-      int t_rest = 800 - 50 * (T - 25);
-      t_rest = clamp(t_rest, 200, 1000);
-
-      digitalWrite(LED_GPIO, HIGH);
-      vTaskDelay(pdMS_TO_TICKS(t_on));
-      digitalWrite(LED_GPIO, LOW);
-      vTaskDelay(pdMS_TO_TICKS(t_gap));
-      digitalWrite(LED_GPIO, HIGH);
-      vTaskDelay(pdMS_TO_TICKS(t_on));
-      digitalWrite(LED_GPIO, LOW);
-      vTaskDelay(pdMS_TO_TICKS(t_rest));
-    }
-    else
-    {
-      int N = 3 + (T - 32) / 2;
-      N = clamp(N, 3, 8);
-
-      int t_blink = 150 - 11 * (T - 32);
-      t_blink = clamp(t_blink, 40, 150);
-
-      for (int i = 0; i < N; i++)
-      {
-        digitalWrite(LED_GPIO, HIGH);
-        vTaskDelay(pdMS_TO_TICKS(t_blink));
-        digitalWrite(LED_GPIO, LOW);
-        vTaskDelay(pdMS_TO_TICKS(t_blink));
-      }
-
-      vTaskDelay(pdMS_TO_TICKS(500));
-    }
-  }
-}
-
-
-mainserver.cpp
-
-#include "mainserver.h"
-#include "task_check_info.h"
+#ifndef ___MAIN_SERVER__
+#define ___MAIN_SERVER__
+#include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
-#include <LittleFS.h>
-#include <ArduinoJson.h>
-#include <cmath>
-
-static bool isAPMode = true;
-static WebServer server(80);
-static unsigned long connect_start_ms = 0;
-static bool connecting = false;
-
-// ========== Handlers ==========
-void handleRoot()
-{
-  serveFile("/index.html", "text/html");
-}
-
-void handleJS()
-{
-  serveFile("/script.js", "application/javascript");
-}
-
-void handleCSS()
-{
-  serveFile("/styles.css", "text/css");
-}
-
-String jsonResponse(String body)
-{
-  return "{" + body + "}";
-}
-
-void handleSystem()
-{
-  String ap_ssid;
-  String ap_pass;
-  String wifi_ssid;
-  String wifi_pass;
-  String device_token;
-  String mqtt_server;
-  int mqtt_port = 1883;
-  int read_interval = 5000;
-
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    ap_ssid = systemContext.ap_ssid;
-    ap_pass = systemContext.ap_pass;
-    wifi_ssid = systemContext.wifi_ssid;
-    wifi_pass = systemContext.wifi_pass;
-    device_token = systemContext.core_iot_token;
-    mqtt_server = systemContext.core_iot_server;
-    mqtt_port = systemContext.core_iot_port.toInt();
-    read_interval = systemContext.read_interval;
-    giveSystemContext();
-  }
-
-  StaticJsonDocument<256> doc;
-  doc["ssid"] = ap_ssid;
-  doc["ip"] = WiFi.localIP().toString();
-  doc["ap_password"] = ap_pass;
-  doc["wifi_ssid"] = wifi_ssid;
-  doc["wifi_password"] = wifi_pass;
-  doc["device_token"] = device_token;
-  doc["mqtt_server"] = mqtt_server;
-  doc["mqtt_port"] = mqtt_port;
-  doc["ap_name"] = ap_ssid;
-  doc["read_interval"] = read_interval;
-
-  String out;
-  serializeJson(doc, out);
-  server.send(200, "application/json", out);
-}
-
-String getTempState(float t)
-{
-  if (t < 20)
-    return "COLD";
-  if (t < 35)
-    return "NORMAL";
-  return "HOT";
-}
-
-String getHumState(float h)
-{
-  if (h < 40)
-    return "DRY";
-  if (h < 70)
-    return "COMFORT";
-  return "HUMID";
-}
-
-String getComfort(float hx)
-{
-  if (hx < 30)
-    return "EASY";
-  if (hx < 35)
-    return "STICKY";
-  if (hx < 40)
-    return "UNCOMFY";
-  return "RISKY";
-}
-
-void handleSensorsAPI()
-{
-  float temperature = 0;
-  float humidity = 0;
-  float humidex = 0;
-  int weather_status = 0;
-
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    temperature = systemContext.temperature;
-    humidity = systemContext.humidity;
-    humidex = systemContext.humidex;
-    weather_status = systemContext.weather_status;
-    giveSystemContext();
-  }
-
-  StaticJsonDocument<256> doc;
-  doc["temperature"] = temperature;
-  doc["humidity"] = humidity;
-  doc["humidex"] = humidex;
-  doc["state_temp"] = getTempState(temperature);
-  doc["state_hum"] = getHumState(humidity);
-  doc["comfort"] = getComfort(humidex);
-  doc["weather"] = get_weather_label(weather_status);
-
-  String out;
-  serializeJson(doc, out);
-  server.send(200, "application/json", out);
-}
-
-void handleDevices()
-{
-  String mode;
-  bool led_state = false;
-  int neo_r = 0;
-  int neo_g = 0;
-  int neo_b = 0;
-  int neo_brightness = 0;
-  float temperature = 0;
-  float humidity = 0;
-
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    mode = systemContext.device_mode;
-    led_state = systemContext.led_state;
-    neo_r = systemContext.neo_r;
-    neo_g = systemContext.neo_g;
-    neo_b = systemContext.neo_b;
-    neo_brightness = systemContext.neo_brightness;
-    temperature = systemContext.temperature;
-    humidity = systemContext.humidity;
-    giveSystemContext();
-  }
-
-  StaticJsonDocument<256> doc;
-  doc["mode"] = mode;
-
-  JsonObject led = doc.createNestedObject("led");
-  led["state"] = led_state;
-  led["logic_state"] = getTempState(temperature);
-
-  JsonObject neo = doc.createNestedObject("neo");
-  JsonArray color = neo.createNestedArray("color");
-  color.add(neo_r);
-  color.add(neo_g);
-  color.add(neo_b);
-  neo["brightness"] = neo_brightness;
-  neo["logic_state"] = getHumState(humidity);
-
-  String out;
-  serializeJson(doc, out);
-  server.send(200, "application/json", out);
-}
-
-void handleControl()
-{
-  if (!server.hasArg("plain"))
-  {
-    server.send(400, "application/json", "{\"error\":\"no body\"}");
-    return;
-  }
-
-  StaticJsonDocument<384> doc;
-  DeserializationError err = deserializeJson(doc, server.arg("plain"));
-  if (err)
-  {
-    server.send(400, "application/json", "{\"error\":\"json parse failed\"}");
-    return;
-  }
-
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    if (doc["mode"])
-      systemContext.device_mode = doc["mode"].as<String>();
-
-    if (doc["led"].is<bool>())
-      systemContext.led_state = doc["led"];
-
-    if (doc["neo"])
-    {
-      systemContext.neo_r = doc["neo"]["r"];
-      systemContext.neo_g = doc["neo"]["g"];
-      systemContext.neo_b = doc["neo"]["b"];
-      systemContext.neo_brightness = doc["neo"]["brightness"];
-    }
-    giveSystemContext();
-  }
-
-  server.send(200, "application/json", "{\"status\":\"ok\"}");
-}
-
-void handleConfig()
-{
-  if (!server.hasArg("plain"))
-  {
-    server.send(400, "application/json", "{\"error\":\"no body\"}");
-    return;
-  }
-
-  StaticJsonDocument<256> doc;
-  DeserializationError err = deserializeJson(doc, server.arg("plain"));
-  if (err)
-  {
-    server.send(400, "application/json", "{\"error\":\"json parse failed\"}");
-    return;
-  }
-
-  String wifi_ssid = doc["ssid"] | "";
-  String wifi_pass = doc["password"] | "";
-  String core_iot_token = doc["token"] | "";
-  String core_iot_server = doc["server"] | "";
-  int port = doc["port"] | 1883;
-  String ap_ssid = doc["ap_ssid"] | String();
-  String ap_pass = doc["ap_password"] | String();
-  int read_interval = doc["read_interval"] | 0;
-
-  String saved_ap_ssid;
-  String saved_ap_pass;
-  int saved_read_interval = read_interval;
-
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    systemContext.wifi_ssid = wifi_ssid;
-    systemContext.wifi_pass = wifi_pass;
-    systemContext.core_iot_token = core_iot_token;
-    systemContext.core_iot_server = core_iot_server;
-    systemContext.core_iot_port = String(port);
-    if (!ap_ssid.isEmpty())
-      systemContext.ap_ssid = ap_ssid;
-    if (!ap_pass.isEmpty())
-      systemContext.ap_pass = ap_pass;
-    if (read_interval > 0)
-      systemContext.read_interval = read_interval;
-
-    saved_ap_ssid = systemContext.ap_ssid;
-    saved_ap_pass = systemContext.ap_pass;
-    saved_read_interval = systemContext.read_interval;
-    giveSystemContext();
-  }
-
-  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, String(port), saved_ap_ssid, saved_ap_pass, saved_read_interval);
-
-  isAPMode = false;
-  connecting = true;
-  connect_start_ms = millis();
-  connectToWiFi();
-
-  server.send(200, "application/json", "{\"status\":\"saved\"}");
-}
-
-void handleSettingsAPI()
-{
-  if (!server.hasArg("plain"))
-  {
-    server.send(400, "application/json", "{\"error\":\"no body\"}");
-    return;
-  }
-
-  StaticJsonDocument<256> doc;
-  DeserializationError err = deserializeJson(doc, server.arg("plain"));
-  if (err)
-  {
-    server.send(400, "application/json", "{\"error\":\"json parse failed\"}");
-    return;
-  }
-
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    if (doc["ap_ssid"])
-      systemContext.ap_ssid = doc["ap_ssid"].as<String>();
-    if (doc["ap_password"])
-      systemContext.ap_pass = doc["ap_password"].as<String>();
-    if (doc["sensor_interval"])
-      systemContext.read_interval = max(1, doc["sensor_interval"].as<int>());
-    giveSystemContext();
-  }
-
-  String wifi_ssid;
-  String wifi_pass;
-  String core_iot_token;
-  String core_iot_server;
-  String core_iot_port;
-  String ap_ssid;
-  String ap_pass;
-  int read_interval;
-
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    wifi_ssid = systemContext.wifi_ssid;
-    wifi_pass = systemContext.wifi_pass;
-    core_iot_token = systemContext.core_iot_token;
-    core_iot_server = systemContext.core_iot_server;
-    core_iot_port = systemContext.core_iot_port;
-    ap_ssid = systemContext.ap_ssid;
-    ap_pass = systemContext.ap_pass;
-    read_interval = systemContext.read_interval;
-    giveSystemContext();
-  }
-
-  Save_info_File(wifi_ssid, wifi_pass, core_iot_token, core_iot_server, core_iot_port, ap_ssid, ap_pass, read_interval);
-
-  Serial.println("Settings updated:");
-  Serial.println(ap_ssid);
-  Serial.println(ap_pass);
-  Serial.println(read_interval);
-
-  server.send(200, "application/json", "{\"status\":\"updated\"}");
-}
-
-void handleReset()
-{
-  server.send(200, "application/json", "{\"status\":\"restarting\"}");
-  delay(1000);
-  ESP.restart();
-}
-
-bool serveFile(const char *path, const char *type)
-{
-  if (!LittleFS.exists(path))
-  {
-    server.send(404, "text/plain", "File not found");
-    return false;
-  }
-
-  File file = LittleFS.open(path, "r");
-  if (!file)
-  {
-    server.send(500, "text/plain", "Open failed");
-    return false;
-  }
-
-  server.streamFile(file, type);
-  file.close();
-  return true;
-}
-
-// ========== WiFi ==========
-void setupServer()
-{
-  server.on("/", HTTP_GET, handleRoot);
-
-  server.on("/script.js", HTTP_GET, handleJS);
-  server.on("/styles.css", HTTP_GET, handleCSS);
-
-  server.on("/api/system", HTTP_GET, handleSystem);
-  server.on("/api/sensors", HTTP_GET, handleSensorsAPI);
-  server.on("/api/devices", HTTP_GET, handleDevices);
-  server.on("/api/control", HTTP_POST, handleControl);
-  server.on("/api/config", HTTP_POST, handleConfig);
-  server.on("/api/settings", HTTP_POST, handleSettingsAPI);
-  server.on("/api/reset", HTTP_POST, handleReset);
-
-  server.onNotFound([]()
-                    { server.send(404, "text/plain", "Route not found"); });
-
-  server.begin();
-}
-
-void startAP()
-{
-  String ap_ssid;
-  String ap_pass;
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    ap_ssid = systemContext.ap_ssid;
-    ap_pass = systemContext.ap_pass;
-    giveSystemContext();
-  }
-
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(ap_ssid.c_str(), ap_pass.c_str());
-  Serial.print("AP IP address: ");
-  Serial.println(WiFi.softAPIP());
-  isAPMode = true;
-  connecting = false;
-}
-
-void connectToWiFi()
-{
-  String wifi_ssid;
-  String wifi_pass;
-  if (takeSystemContext(portMAX_DELAY))
-  {
-    wifi_ssid = systemContext.wifi_ssid;
-    wifi_pass = systemContext.wifi_pass;
-    giveSystemContext();
-  }
-
-  WiFi.mode(WIFI_STA);
-  if (wifi_pass.isEmpty())
-  {
-    WiFi.begin(wifi_ssid.c_str());
-  }
-  else
-  {
-    WiFi.begin(wifi_ssid.c_str(), wifi_pass.c_str());
-  }
-  Serial.print("Connecting to: ");
-  Serial.print(wifi_ssid.c_str());
-  Serial.print(" Password: ");
-  Serial.print(wifi_pass.c_str());
-}
-
-// ========== Main task ==========
-void main_server_task(void *pvParameters)
-{
-  pinMode(BOOT_PIN, INPUT_PULLUP);
-
-  startAP();
-  setupServer();
-
-  while (1)
-  {
-    server.handleClient();
-
-    if (digitalRead(BOOT_PIN) == LOW)
-    {
-      vTaskDelay(100);
-      if (digitalRead(BOOT_PIN) == LOW)
-      {
-        if (!isAPMode)
-        {
-          startAP();
-          setupServer();
-        }
-      }
-    }
-
-    if (connecting)
-    {
-      if (WiFi.status() == WL_CONNECTED)
-      {
-        Serial.print("STA IP address: ");
-        Serial.println(WiFi.localIP());
-
-        if (takeSystemContext(portMAX_DELAY))
-        {
-          systemContext.is_wifi_connected = true;
-          giveSystemContext();
-        }
-
-        xSemaphoreGive(systemContext.internet_semaphore);
-        Serial.println("WiFi connected! Internet access granted.");
-
-        isAPMode = false;
-        connecting = false;
-      }
-      else if (millis() - connect_start_ms > 10000)
-      {
-        Serial.println("WiFi connect failed! Back to AP.");
-        startAP();
-        setupServer();
-        connecting = false;
-
-        if (takeSystemContext(portMAX_DELAY))
-        {
-          systemContext.is_wifi_connected = false;
-          giveSystemContext();
-        }
-      }
-    }
-
-    vTaskDelay(20);
-  }
-}
-
-neo_blinky.cpp
-
-
-#include "neo_blinky.h"
 #include "global.h"
 
-static float clampf(float v, float a, float b)
-{
-    if (v < a)
-        return a;
-    if (v > b)
-        return b;
-    return v;
-}
+#define LED1_PIN 48
+#define LED2_PIN 41
+#define BOOT_PIN 0
+// extern WebServer server;
 
-static uint32_t getColor(Adafruit_NeoPixel &strip, int r, int g, int b, float brightness)
-{
-    r = (int)(r * brightness);
-    g = (int)(g * brightness);
-    b = (int)(b * brightness);
-    return strip.Color(r, g, b);
-}
+// extern bool isAPMode;
 
-void neo_blinky(void *pvParameters)
-{
-    Adafruit_NeoPixel strip(LED_COUNT, NEO_PIN, NEO_GRB + NEO_KHZ800);
-    strip.begin();
-    strip.clear();
-    strip.show();
+String mainPage();
+String settingsPage();
 
-    while (1)
-    {
-        String mode;
-        int neo_r = 0;
-        int neo_g = 0;
-        int neo_b = 0;
-        int neo_brightness = 0;
-        float humidity = 0;
+void startAP();
+void setupServer();
+void connectToWiFi();
 
-        if (takeSystemContext(portMAX_DELAY))
-        {
-            mode = systemContext.device_mode;
-            neo_r = systemContext.neo_r;
-            neo_g = systemContext.neo_g;
-            neo_b = systemContext.neo_b;
-            neo_brightness = systemContext.neo_brightness;
-            humidity = systemContext.humidity;
-            giveSystemContext();
-        }
+void main_server_task(void *pvParameters);
+bool serveFile(const char *path, const char *type);
 
-        if (mode == "MANUAL")
-        {
-            float brightness = clampf(neo_brightness / 255.0f, 0.0, 1.0);
-            uint32_t color = getColor(strip, neo_r, neo_g, neo_b, brightness);
-            strip.setPixelColor(0, color);
-            strip.show();
-            vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
-        }
+#endif
 
-        float H = humidity;
-        int r = 0, g = 0, b = 0;
-        float T = 1000;
-        float B = 0.5;
+#ifndef __NEO_BLINKY__
+#define __NEO_BLINKY__
+#include <Arduino.h>
+#include <Adafruit_NeoPixel.h>
 
-        if (H < 40)
-        {
-            r = 255;
-            g = 200;
-            b = 0;
-            T = 1500 - 20 * (40 - H);
-            B = 0.4 + 0.01 * H;
-        }
-        else if (H <= 70)
-        {
-            r = 0;
-            g = 255;
-            b = 0;
-            T = 1000 - 20 * abs(H - 60);
-            B = 0.6 + 0.005 * abs(H - 60);
-        }
-        else
-        {
-            r = 0;
-            g = 100;
-            b = 255;
-            T = 700 - 8 * (H - 70);
-            B = 0.7 + 0.003 * (H - 70);
-        }
 
-        T = clampf(T, 20, 2000);
-        B = clampf(B, 0.1, 1.0);
 
-        uint32_t color = getColor(strip, r, g, b, B);
-        int half = T / 2;
+#define NEO_PIN 45
+#define LED_COUNT 1 
 
-        strip.setPixelColor(0, color);
-        strip.show();
-        vTaskDelay(pdMS_TO_TICKS(half));
+void neo_blinky(void *pvParameters);
 
-        strip.setPixelColor(0, 0);
-        strip.show();
-        vTaskDelay(pdMS_TO_TICKS(half));
-    }
-}
+
+#endif
+
+#ifndef __TASK_CHECK_INFO_H__
+#define __TASK_CHECK_INFO_H__
+
+#include <ArduinoJson.h>
+#include "LittleFS.h"
+#include "global.h"
+
+bool check_info_File(bool check);
+void Load_info_File();
+void Delete_info_File();
+void Save_info_File(String wifi_ssid, String wifi_pass, String CORE_IOT_TOKEN, String CORE_IOT_SERVER, String CORE_IOT_PORT, String MQTT_TARGET, String ap_ssid, String ap_pass, int read_interval, int publish_interval);
+
+#endif
+
+
+
+#include "global.h"
+#include "task_check_info.h"
+
+void Task_Toogle_BOOT(void *pvParameters);
+
+include/coreiot.h include/global.h include/lcd_monitor.h include/led_blinky.h include/mainserver.h include/neo_blinky.h include/project_includes.h include/README include/task_check_info.h include/task_rs485.h include/task_toogle_boot.h include/temp_humi_monitor.h include/tinyml.h
+
+#ifndef __TINY_ML__
+#define __TINY_ML__
+
+#include <Arduino.h>
+
+#include "TinyML_weather_model.h"
+#include "global.h"
+
+#include <TensorFlowLite_ESP32.h>
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/system_setup.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
+void setupTinyML();
+void tiny_ml_task(void *pvParameters);
+
+#endif
 
