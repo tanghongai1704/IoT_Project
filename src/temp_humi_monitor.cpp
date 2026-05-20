@@ -1,44 +1,50 @@
 #include "temp_humi_monitor.h"
-DHT20 dht20;
-LiquidCrystal_I2C lcd(33, 16, 2);
+
+static DHT20 dht20;
 
 void temp_humi_monitor(void *pvParameters)
 {
-
     Wire.begin(11, 12);
     Serial.begin(115200);
     dht20.begin();
 
     while (1)
     {
-        /* code */
-
         dht20.read();
-        // Reading temperature in Celsius
         float temperature = dht20.getTemperature();
-        // Reading humidity
         float humidity = dht20.getHumidity();
 
-        // Check if any reads failed and exit early
         if (isnan(temperature) || isnan(humidity))
         {
             Serial.println("Failed to read from DHT sensor!");
             temperature = humidity = -1;
-            // return;
         }
 
-        // Update global variables for temperature and humidity
-        glob_temperature = temperature;
-        glob_humidity = humidity;
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            systemContext.temperature = temperature;
+            systemContext.humidity = humidity;
+            giveSystemContext();
 
-        // Print the results
+            // Signal that sensor data has been updated
+            xSemaphoreGive(systemContext.sensor_update_semaphore);
+        }
 
-        Serial.print("Humidity: ");
-        Serial.print(humidity);
-        Serial.print("%  Temperature: ");
-        Serial.print(temperature);
-        Serial.println("°C");
+        // Serial.print("Humidity: ");
+        // Serial.print(humidity);
+        // Serial.print("%  Temperature: ");
+        // Serial.print(temperature);
+        // Serial.println("°C");
+        // Serial.print("Humidex: ");
+        // Serial.println(humidex);
 
-        vTaskDelay(5000);
+        int interval = 5000;
+        if (takeSystemContext(pdMS_TO_TICKS(100)))
+        {
+            interval = systemContext.read_interval;
+            giveSystemContext();
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(interval));
     }
 }

@@ -6,15 +6,51 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
-extern float glob_temperature;
-extern float glob_humidity;
+typedef struct
+{
+    float temperature;
+    float humidity;
+    int alert_status;
 
-extern String WIFI_SSID;
-extern String WIFI_PASS;
-extern String CORE_IOT_TOKEN;
-extern String CORE_IOT_SERVER;
-extern String CORE_IOT_PORT;
+    String wifi_ssid;
+    String wifi_pass;
+    String core_iot_token;
+    String core_iot_server;
+    String core_iot_port;
+    String mqtt_target;
+    String ap_ssid;
+    String ap_pass;
+    int read_interval;
+    int publish_interval;
 
-extern boolean isWifiConnected;
-extern SemaphoreHandle_t xBinarySemaphoreInternet;
+    bool is_wifi_connected;
+    bool led_state;
+    String device_mode;
+
+    int neo_r;
+    int neo_g;
+    int neo_b;
+    int neo_brightness;
+
+    SemaphoreHandle_t mutex;
+    SemaphoreHandle_t internet_semaphore;
+    SemaphoreHandle_t sensor_update_semaphore;
+} SystemContext;
+
+extern SystemContext systemContext;
+
+void initSystemContext();
+
+static inline bool takeSystemContext(TickType_t timeout = portMAX_DELAY)
+{
+    return xSemaphoreTake(systemContext.mutex, timeout) == pdTRUE;
+}
+
+static inline void giveSystemContext()
+{
+    xSemaphoreGive(systemContext.mutex);
+}
+
+const char *get_alert_status(int label);
+
 #endif

@@ -1,3 +1,110 @@
+main.cpp---
+
+#include "global.h"
+
+#include "led_blinky.h"
+#include "neo_blinky.h"
+#include "temp_humi_monitor.h"
+#include "lcd_monitor.h"
+#include "mainserver.h"
+#include "tinyml.h"
+#include "coreiot.h"
+
+// include task
+#include "task_check_info.h"
+#include "task_toogle_boot.h"
+
+void setup()
+{
+  Serial.begin(115200);
+  initSystemContext();
+  check_info_File(0);
+
+  xTaskCreate(led_blinky, "Task LED Blink", 2048, NULL, 2, NULL);
+  xTaskCreate(neo_blinky, "Task NEO Blink", 2048, NULL, 2, NULL);
+  xTaskCreate(temp_humi_monitor, "Task TEMP HUMI Monitor", 2048, NULL, 2, NULL);
+  xTaskCreate(lcd_monitor_task, "Task LCD Monitor", 2048, NULL, 2, NULL);
+  xTaskCreate(main_server_task, "WebServer Task", 8192, NULL, 2, NULL);
+  xTaskCreate(tiny_ml_task, "Tiny ML Task", 12288, NULL, 2, NULL);
+  xTaskCreate(coreiot_task, "CoreIOT Task", 4096, NULL, 2, NULL);
+  xTaskCreate(Task_Toogle_BOOT, "Task_Toogle_BOOT", 4096, NULL, 2, NULL);
+}
+
+void loop()
+{
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+}
+
+global.cpp---
+#include "global.h"
+
+SystemContext systemContext;
+
+static StaticSemaphore_t xContextMutexBuffer;
+static StaticSemaphore_t xInternetSemaphoreBuffer;
+static StaticSemaphore_t xSensorUpdateSemaphoreBuffer;
+
+void initSystemContext()
+{
+    systemContext.temperature = 0;
+    systemContext.humidity = 0;
+    systemContext.alert_status = 0;
+
+    systemContext.wifi_ssid = "";
+    systemContext.wifi_pass = "";
+    systemContext.core_iot_token = "";
+    systemContext.core_iot_server = "";
+    systemContext.core_iot_port = "";
+    systemContext.mqtt_target = "coreiot";
+    systemContext.ap_ssid = SSID_AP;
+    systemContext.ap_pass = String(PASS_AP);
+    systemContext.read_interval = 5000;
+    systemContext.publish_interval = 10000;
+
+    systemContext.is_wifi_connected = false;
+    systemContext.led_state = false;
+    systemContext.device_mode = "AUTO";
+
+    systemContext.neo_r = 255;
+    systemContext.neo_g = 107;
+    systemContext.neo_b = 107;
+    systemContext.neo_brightness = 120;
+
+    systemContext.mutex = xSemaphoreCreateMutexStatic(&xContextMutexBuffer);
+    systemContext.internet_semaphore = xSemaphoreCreateBinaryStatic(&xInternetSemaphoreBuffer);
+    systemContext.sensor_update_semaphore = xSemaphoreCreateBinaryStatic(&xSensorUpdateSemaphoreBuffer);
+
+    if (systemContext.mutex == NULL || systemContext.internet_semaphore == NULL || systemContext.sensor_update_semaphore == NULL)
+    {
+        Serial.println("❌ System context initialization failed");
+        while (true)
+        {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+}
+
+// ===== LABEL =====
+const char *get_alert_status(int label)
+{
+    switch (label)
+    {
+    case 0:
+        return "Safe";
+    case 1:
+        return "Caution";
+    case 2:
+        return "Extreme Caution";
+    case 3:
+        return "Danger";
+    case 4:
+        return "Extreme Danger";
+    default:
+        return "Unknown";
+    }
+}
+
+coreiot.cpp
 #include "coreiot.h"
 #include "global.h"
 #include "led_blinky.h"
@@ -391,3 +498,310 @@ void coreiot_task(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
+
+
+lcd_monitor.cpp
+
+#include "lcd_monitor.h"
+#include "global.h"
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+static LiquidCrystal_I2C lcd(33, 16, 2);
+
+String showAlert(int label)
+{
+    switch (label)
+    {
+    case 0:
+        return "SAFE";
+
+    case 1:
+        return "CAUTION";
+
+    case 2:
+        return "X-CAUTION";
+
+    case 3:
+        return "DANGER";
+
+    case 4:
+        return "X-DANGER";
+
+    default:
+        return "UNKNOWN";
+    }
+}
+
+void lcd_monitor_task(void *pvParameters)
+{
+    Wire.begin(11, 12);
+
+    lcd.begin();
+    lcd.backlight();
+    lcd.clear();
+
+    bool blinkState = true;
+
+    while (1)
+    {
+        float temperature = 0;
+        float humidity = 0;
+        int alert_status = 0;
+
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            temperature = systemContext.temperature;
+            humidity = systemContext.humidity;
+            alert_status = systemContext.alert_status;
+
+            giveSystemContext();
+        }
+
+        String alert = showAlert(alert_status);
+
+        // =========================
+        // ROW 0 (always visible)
+        // =========================
+        lcd.setCursor(0, 0);
+
+        String line1 =
+            "T:" + String(temperature, 1) +
+            "C H:" + String(humidity, 1) + "%";
+
+        while (line1.length() < 16)
+            line1 += " ";
+
+        lcd.print(line1);
+
+        // =========================
+        // ROW 1 (blinking alert)
+        // =========================
+        lcd.setCursor(0, 1);
+
+        String line2;
+
+        if (blinkState)
+        {
+            line2 = "ALERT:" + alert;
+        }
+        else
+        {
+            line2 = "";
+        }
+
+        while (line2.length() < 16)
+            line2 += " ";
+
+        lcd.print(line2);
+
+        blinkState = !blinkState;
+
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
+led_blinky.cpp
+
+#include "led_blinky.h"
+
+#define T_COLD_MAX 28
+#define T_HOT_MIN 32
+
+bool last_led_state = false;
+
+static int clamp(int val, int minVal, int maxVal)
+{
+  if (val < minVal)
+    return minVal;
+  if (val > maxVal)
+    return maxVal;
+  return val;
+}
+
+void led_blinky(void *pvParameters)
+{
+  pinMode(LED_GPIO, OUTPUT);
+
+  while (1)
+  {
+    String mode;
+    bool led_state = false;
+    float temperature = 0;
+
+    if (takeSystemContext(portMAX_DELAY))
+    {
+      mode = systemContext.device_mode;
+      led_state = systemContext.led_state;
+      temperature = systemContext.temperature;
+      giveSystemContext();
+    }
+
+    if (mode == "MANUAL")
+    {
+      if (led_state != last_led_state)
+      {
+        digitalWrite(LED_GPIO, led_state ? HIGH : LOW);
+        last_led_state = led_state;
+      }
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
+    float T = temperature;
+
+    if (T < T_COLD_MAX)
+    {
+      int t_on = 150;
+      int t_off = 1500 - 120 * (T - 15);
+      t_off = clamp(t_off, 200, 2000);
+
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_off));
+    }
+    else if (T <= T_HOT_MIN)
+    {
+      int t_on = 120;
+      int t_gap = 120;
+      int t_rest = 800 - 50 * (T - 25);
+      t_rest = clamp(t_rest, 200, 1000);
+
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_gap));
+      digitalWrite(LED_GPIO, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(t_on));
+      digitalWrite(LED_GPIO, LOW);
+      vTaskDelay(pdMS_TO_TICKS(t_rest));
+    }
+    else
+    {
+      int N = 3 + (T - 32) / 2;
+      N = clamp(N, 3, 8);
+
+      int t_blink = 150 - 11 * (T - 32);
+      t_blink = clamp(t_blink, 40, 150);
+
+      for (int i = 0; i < N; i++)
+      {
+        digitalWrite(LED_GPIO, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(t_blink));
+        digitalWrite(LED_GPIO, LOW);
+        vTaskDelay(pdMS_TO_TICKS(t_blink));
+      }
+
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
+  }
+}
+
+neo_blinky.cpp
+
+#include "neo_blinky.h"
+#include "global.h"
+
+static float clampf(float v, float a, float b)
+{
+    if (v < a)
+        return a;
+    if (v > b)
+        return b;
+    return v;
+}
+
+static uint32_t getColor(Adafruit_NeoPixel &strip, int r, int g, int b, float brightness)
+{
+    r = (int)(r * brightness);
+    g = (int)(g * brightness);
+    b = (int)(b * brightness);
+    return strip.Color(r, g, b);
+}
+
+void neo_blinky(void *pvParameters)
+{
+    Adafruit_NeoPixel strip(LED_COUNT, NEO_PIN, NEO_GRB + NEO_KHZ800);
+    strip.begin();
+    strip.clear();
+    strip.show();
+
+    while (1)
+    {
+        String mode;
+        int neo_r = 0;
+        int neo_g = 0;
+        int neo_b = 0;
+        int neo_brightness = 0;
+        float humidity = 0;
+
+        if (takeSystemContext(portMAX_DELAY))
+        {
+            mode = systemContext.device_mode;
+            neo_r = systemContext.neo_r;
+            neo_g = systemContext.neo_g;
+            neo_b = systemContext.neo_b;
+            neo_brightness = systemContext.neo_brightness;
+            humidity = systemContext.humidity;
+            giveSystemContext();
+        }
+
+        if (mode == "MANUAL")
+        {
+            float brightness = clampf(neo_brightness / 255.0f, 0.0, 1.0);
+            uint32_t color = getColor(strip, neo_r, neo_g, neo_b, brightness);
+            strip.setPixelColor(0, color);
+            strip.show();
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        float H = humidity;
+        int r = 0, g = 0, b = 0;
+        float T = 1000;
+        float B = 0.5;
+
+        if (H < 50)
+        {
+            r = 255;
+            g = 200;
+            b = 0;
+            T = 1500 - 20 * (40 - H);
+            B = 0.4 + 0.01 * H;
+        }
+        else if (H <= 70)
+        {
+            r = 0;
+            g = 255;
+            b = 0;
+            T = 1000 - 20 * abs(H - 60);
+            B = 0.6 + 0.005 * abs(H - 60);
+        }
+        else
+        {
+            r = 0;
+            g = 100;
+            b = 255;
+            T = 700 - 8 * (H - 70);
+            B = 0.7 + 0.003 * (H - 70);
+        }
+
+        T = clampf(T, 20, 2000);
+        B = clampf(B, 0.1, 1.0);
+
+        uint32_t color = getColor(strip, r, g, b, B);
+        int half = T / 2;
+
+        strip.setPixelColor(0, color);
+        strip.show();
+        vTaskDelay(pdMS_TO_TICKS(half));
+
+        strip.setPixelColor(0, 0);
+        strip.show();
+        vTaskDelay(pdMS_TO_TICKS(half));
+    }
+}
+
+
