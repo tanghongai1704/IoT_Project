@@ -139,8 +139,7 @@ void handle_temp_led_command()
     {
         if (strcmp(temp_led_state, "cold") == 0)
         {
-            // Serial.println("Setting TEMP_LED to COLD pattern");
-            // Nháy một lần
+            // Cold state: single blink.
             digitalWrite(LED_GPIO, HIGH);
             vTaskDelay(pdMS_TO_TICKS(t_on));
             digitalWrite(LED_GPIO, LOW);
@@ -148,8 +147,7 @@ void handle_temp_led_command()
         }
         else if (strcmp(temp_led_state, "normal") == 0)
         {
-            // Serial.println("Setting TEMP_LED to NORMAL pattern");
-            // Nháy hai lần
+            // Normal state: double blink.
             digitalWrite(LED_GPIO, HIGH);
             vTaskDelay(pdMS_TO_TICKS(t_on));
             digitalWrite(LED_GPIO, LOW);
@@ -161,8 +159,7 @@ void handle_temp_led_command()
         }
         else if (strcmp(temp_led_state, "hot") == 0)
         {
-            // Serial.println("Setting TEMP_LED to HOT pattern");
-            // Nháy ba lần
+            // Hot state: triple blink.
             for (int i = 0; i < 3; i++)
             {
                 digitalWrite(LED_GPIO, HIGH);
@@ -232,15 +229,9 @@ void handle_humi_neo_command()
 
 void callback(char *topic, byte *payload, unsigned int length)
 {
-    // Serial.print("Message arrived [");
-    // Serial.print(topic);
-    // Serial.println("] ");
-
     char message[length + 1];
     memcpy(message, payload, length);
     message[length] = '\0';
-    // Serial.print("Payload: ");
-    // Serial.println(message);
 
     StaticJsonDocument<256> doc;
     DeserializationError error = deserializeJson(doc, message);
@@ -292,8 +283,7 @@ void callback(char *topic, byte *payload, unsigned int length)
     }
     else
     {
-        // Serial.print("Unknown method: ");
-        // Serial.println(method);
+        // Unknown RPC method; ignore it so future commands do not break the task.
     }
 }
 
@@ -333,7 +323,7 @@ void coreiot_task(void *pvParameters)
 
     unsigned long lastPublish = 0;
 
-    // Start handling LED commands in separate tasks to avoid blocking the main loop
+    // Handle LED commands in separate tasks so MQTT processing stays responsive.
     xTaskCreate([](void *)
                 { handle_temp_led_command(); }, "TEMP_LED_Command_Task", 4096, NULL, 1, NULL);
     xTaskCreate([](void *)
@@ -385,7 +375,7 @@ void coreiot_task(void *pvParameters)
             {
                 client.publish(topic_telemetry.c_str(), payload.c_str());
             }
-            // Serial.println("Published payload: " + payload);
+            // Uncomment for payload tracing during debugging.
         }
 
         vTaskDelay(pdMS_TO_TICKS(10));

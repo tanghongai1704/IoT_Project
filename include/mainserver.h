@@ -8,9 +8,7 @@
 #define LED1_PIN 48
 #define LED2_PIN 41
 #define BOOT_PIN 0
-// extern WebServer server;
-
-// extern bool isAPMode;
+// Shared server state is defined in mainserver.cpp.
 
 String mainPage();
 String settingsPage();

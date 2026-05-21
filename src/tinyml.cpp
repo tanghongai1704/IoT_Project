@@ -5,6 +5,7 @@
 
 namespace
 {
+    // Interpreter state is shared across the TinyML task only.
     tflite::ErrorReporter *error_reporter = nullptr;
     const tflite::Model *model = nullptr;
     tflite::MicroInterpreter *interpreter = nullptr;
@@ -22,6 +23,7 @@ constexpr int kDaylightOffsetSeconds = 0;
 constexpr char kNtpServer1[] = "pool.ntp.org";
 constexpr char kNtpServer2[] = "time.nist.gov";
 
+// Normalization constants used to match the training pipeline.
 #define TEMP_MEAN 27.55516209f
 #define TEMP_STD 2.81862948f
 
@@ -36,6 +38,7 @@ const char *const kAlertLabels[kAlertClassCount] = {
     "Extreme danger",
 };
 
+// Read a tensor value regardless of float or quantized output type.
 float get_output_value(const TfLiteTensor *tensor, int i)
 {
     if (tensor->type == kTfLiteFloat32)
@@ -52,6 +55,7 @@ float get_output_value(const TfLiteTensor *tensor, int i)
     return 0.0f;
 }
 
+// Return the number of classes encoded in the last tensor dimension.
 int get_tensor_class_count(const TfLiteTensor *tensor)
 {
     if (tensor == nullptr || tensor->dims == nullptr || tensor->dims->size <= 0)
@@ -61,6 +65,7 @@ int get_tensor_class_count(const TfLiteTensor *tensor)
     return tensor->dims->data[tensor->dims->size - 1];
 }
 
+// Choose the class index with the highest score.
 int get_predicted_class(const TfLiteTensor *tensor, int class_count)
 {
     int safe_class_count = get_tensor_class_count(tensor);
@@ -88,6 +93,7 @@ int get_predicted_class(const TfLiteTensor *tensor, int class_count)
     return predicted;
 }
 
+// Map the predicted alert class to a readable label.
 const char *alertStatusToText(int label)
 {
     if (label < 0 || label >= kAlertClassCount)
@@ -97,6 +103,7 @@ const char *alertStatusToText(int label)
     return kAlertLabels[label];
 }
 
+// Print the probability score for each class in a consistent format.
 void print_tensor_probabilities(const char *title, const TfLiteTensor *tensor, int class_count, const char *const *labels)
 {
     Serial.print(title);
@@ -112,6 +119,7 @@ void print_tensor_probabilities(const char *title, const TfLiteTensor *tensor, i
     }
 }
 
+// Log the final class decision for debugging and validation.
 void print_prediction_summary(int alert_status)
 {
     Serial.println("Prediction summary:");
@@ -121,6 +129,7 @@ void print_prediction_summary(int alert_status)
     Serial.println(alertStatusToText(alert_status));
 }
 
+// Try to synchronize time once at startup so the model can use month/hour features.
 bool syncSystemTime()
 {
     Serial.println("Syncing system time with NTP...");
@@ -143,6 +152,7 @@ bool syncSystemTime()
     return false;
 }
 
+// Read month and hour from the system clock, or fall back to safe defaults.
 bool getMonthAndHourFromSystemTime(int &month, int &hour)
 {
     struct tm timeinfo;
@@ -163,6 +173,7 @@ bool getMonthAndHourFromSystemTime(int &month, int &hour)
     return true;
 }
 
+// Load the model, validate the tensor layout, and bind the input/output tensors.
 void setupTinyML()
 {
     Serial.println("TensorFlow Lite Init...");
@@ -193,7 +204,7 @@ void setupTinyML()
     }
 
     input = interpreter->input(0);
-    // Model now exports single head: alert (e.g., 4 classes) at output(0)
+    // The model exposes a single classification head at output(0).
     alert_output = interpreter->output(0);
 
     if (input == nullptr || alert_output == nullptr)
@@ -230,6 +241,7 @@ void setupTinyML()
     Serial.println("TinyML ready.");
 }
 
+// Main inference task: wait for new sensor data, then run prediction.
 void tiny_ml_task(void *pvParameters)
 {
     setupTinyML();

@@ -26,17 +26,11 @@ void temp_humi_monitor(void *pvParameters)
             systemContext.humidity = humidity;
             giveSystemContext();
 
-            // Signal that sensor data has been updated
+            // Notify downstream tasks that fresh sensor data is available.
             xSemaphoreGive(systemContext.sensor_update_semaphore);
         }
 
-        // Serial.print("Humidity: ");
-        // Serial.print(humidity);
-        // Serial.print("%  Temperature: ");
-        // Serial.print(temperature);
-        // Serial.println("°C");
-        // Serial.print("Humidex: ");
-        // Serial.println(humidex);
+        // Uncomment the block below to trace raw sensor readings locally.
 
         int interval = 5000;
         if (takeSystemContext(pdMS_TO_TICKS(100)))

@@ -8,6 +8,7 @@ static StaticSemaphore_t xSensorUpdateSemaphoreBuffer;
 
 void initSystemContext()
 {
+    // Initialize all shared state to known defaults before tasks start.
     systemContext.temperature = 0;
     systemContext.humidity = 0;
     systemContext.alert_status = 0;
@@ -39,6 +40,7 @@ void initSystemContext()
     if (systemContext.mutex == NULL || systemContext.internet_semaphore == NULL || systemContext.sensor_update_semaphore == NULL)
     {
         Serial.println("❌ System context initialization failed");
+        // Stop here because the application cannot safely run without sync primitives.
         while (true)
         {
             vTaskDelay(pdMS_TO_TICKS(1000));
@@ -46,7 +48,7 @@ void initSystemContext()
     }
 }
 
-// ===== LABEL =====
+// Human-readable alert labels for the TinyML output classes.
 const char *get_alert_status(int label)
 {
     switch (label)

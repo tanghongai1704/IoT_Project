@@ -23,7 +23,7 @@ struct GPIOConfig
   int value;
 };
 
-// static const int ALLOWED_GPIO_PINS[] = {2, 4, 5, 12, 13, 14, 15, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
+// Previous GPIO allow-list kept here for reference while validating the active set.
 static const int ALLOWED_GPIO_PINS[] = {
     1, 2, 4, 5, 6, 7, 8, 9,
     10, 11, 12, 13, 14, 15, 16, 17,
@@ -136,7 +136,7 @@ bool upsertGPIOConfig(int pin, const String &mode, int value, String &error)
       return false;
     }
 
-    // Only initialize PWM hardware if this is a new channel assignment
+    // Initialize PWM hardware only when the pin is assigned to PWM for the first time.
     int existingIndex = findGPIOConfigIndex(pin);
     if (existingIndex < 0 || gpioConfigs[existingIndex].mode != "PWM")
     {
@@ -152,7 +152,7 @@ bool upsertGPIOConfig(int pin, const String &mode, int value, String &error)
       ledcAttachPin(pin, channel);
     }
 
-    // Always write the new PWM value
+    // Always apply the latest PWM duty cycle.
     ledcWrite(channel, normalizedValue);
   }
   else
@@ -199,7 +199,7 @@ bool removeGPIOConfig(int pin)
   return true;
 }
 
-// ========== Handlers ==========
+// HTTP handlers for static assets.
 void handleRoot()
 {
   serveFile("/index.html", "text/html");
@@ -244,14 +244,16 @@ void handleDiagnostics()
 {
   StaticJsonDocument<512> doc;
 
-  // ===== Heap =====
+  // Collect runtime diagnostics for the dashboard.
+
+  // Heap usage
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t totalHeap = ESP.getHeapSize();
 
-  // ===== WiFi RSSI =====
+  // WiFi signal strength
   int wifiRSSI = WiFi.RSSI();
 
-  // ===== Filesystem =====
+  // Filesystem usage
   size_t totalBytes = LittleFS.totalBytes();
   size_t usedBytes = LittleFS.usedBytes();
 
@@ -261,13 +263,13 @@ void handleDiagnostics()
     fsUsage = ((float)usedBytes / (float)totalBytes) * 100.0f;
   }
 
-  // ===== CPU Temp =====
+  // CPU temperature
   float cpuTemp = temperatureRead();
 
-  // ===== Uptime =====
+  // System uptime
   String uptime = formatUptime(millis());
 
-  // ===== MQTT =====
+  // MQTT connection status
   bool mqttConnected = false;
 
   if (takeSystemContext(portMAX_DELAY))
@@ -276,7 +278,7 @@ void handleDiagnostics()
     giveSystemContext();
   }
 
-  // ===== JSON =====
+  // Serialize the response payload.
   doc["free_heap_kb"] = freeHeap / 1024;
   doc["total_heap_kb"] = totalHeap / 1024;
   doc["wifi_rssi"] = wifiRSSI;
@@ -761,7 +763,7 @@ bool serveFile(const char *path, const char *type)
   return true;
 }
 
-// ========== WiFi ==========
+// WiFi and access-point lifecycle.
 void setupServer()
 {
   if (!gpioRuntimeInitialized)
@@ -807,24 +809,7 @@ void setupServer()
   server.begin();
 }
 
-// void startAP()
-// {
-//   String ap_ssid;
-//   String ap_pass;
-//   if (takeSystemContext(portMAX_DELAY))
-//   {
-//     ap_ssid = systemContext.ap_ssid;
-//     ap_pass = systemContext.ap_pass;
-//     giveSystemContext();
-//   }
-
-//   WiFi.mode(WIFI_AP);
-//   WiFi.softAP(ap_ssid.c_str(), ap_pass.c_str());
-//   Serial.print("AP IP address: ");
-//   Serial.println(WiFi.softAPIP());
-//   isAPMode = true;
-//   connecting = false;
-// }
+// Legacy AP bootstrap kept for reference; the active implementation appears below.
 
 void startAP()
 {
@@ -883,7 +868,7 @@ void connectToWiFi()
   Serial.print(wifi_pass.c_str());
 }
 
-// ========== Main task ==========
+// Main server task.
 void main_server_task(void *pvParameters)
 {
   pinMode(BOOT_PIN, INPUT_PULLUP);

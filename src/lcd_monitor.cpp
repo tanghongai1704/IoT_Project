@@ -57,9 +57,7 @@ void lcd_monitor_task(void *pvParameters)
 
         String alert = showAlert(alert_status);
 
-        // =========================
-        // ROW 0 (always visible)
-        // =========================
+        // Row 0 shows the live temperature and humidity values.
         lcd.setCursor(0, 0);
 
         String line1 =
@@ -71,9 +69,7 @@ void lcd_monitor_task(void *pvParameters)
 
         lcd.print(line1);
 
-        // =========================
-        // ROW 1 (blinking alert)
-        // =========================
+        // Row 1 blinks the current alert level to keep it noticeable.
         lcd.setCursor(0, 1);
 
         String line2;

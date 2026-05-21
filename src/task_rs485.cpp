@@ -6,6 +6,7 @@ HardwareSerial RS485Serial(1);
 #define TXD_RS485 9
 #define RXD_RS485 10
 
+// Send an RS485 frame and capture the fixed-length reply when available.
 void sendRS485Command(byte *command, int commandSize, byte *response, int responseSize)
 {
     RS485Serial.write(command, commandSize);
@@ -21,6 +22,7 @@ void sendRS485Command(byte *command, int commandSize, byte *response, int respon
     }
 }
 
+// Send a raw Modbus command byte-by-byte through the second serial port.
 void sendModbusCommand(const uint8_t command[], size_t length)
 {
     for (size_t i = 0; i < length; i++)
@@ -30,6 +32,7 @@ void sendModbusCommand(const uint8_t command[], size_t length)
     delay(delay_connect);
 }
 
+// Read the current sound and pressure values from the RS485 sensors.
 void _sensor_read()
 {
     float sound = 0.0;
@@ -70,6 +73,7 @@ void _sensor_read()
     Serial.println("pressure: " + String(pressure));
 }
 
+// Continuous poll task for the RS485 sensor pair.
 void Task_Read_Sensor(void *pvParameters)
 {
     while (true)
@@ -79,63 +83,66 @@ void Task_Read_Sensor(void *pvParameters)
     }
 }
 
+// Periodically toggle the relay bank using predefined Modbus frames.
 void Task_Send_data(void *pvParameters)
 {
-    // Relay ON command template
+    // Prebuilt Modbus frames for turning each relay on.
     const uint8_t relay_ON[][8] = {
-        {1, 5, 0, 0, 255, 0, 140, 58},  // Relay 0 ON
-        {1, 5, 0, 1, 255, 0, 221, 250}, // Relay 1 ON
-        {1, 5, 0, 2, 255, 0, 45, 250},  // Relay 2 ON
-        {1, 5, 0, 3, 255, 0, 124, 58},  // Relay 3 ON
-        {1, 5, 0, 31, 255, 0, 189, 252} // Relay ALL ON
+        {1, 5, 0, 0, 255, 0, 140, 58},  // Relay 0
+        {1, 5, 0, 1, 255, 0, 221, 250}, // Relay 1
+        {1, 5, 0, 2, 255, 0, 45, 250},  // Relay 2
+        {1, 5, 0, 3, 255, 0, 124, 58},  // Relay 3
+        {1, 5, 0, 31, 255, 0, 189, 252} // All relays
     };
 
-    // Relay OFF command template
+    // Prebuilt Modbus frames for turning each relay off.
     const uint8_t relay_OFF[][8] = {
-        {1, 5, 0, 0, 0, 0, 205, 202}, // Relay 0 OFF
-        {1, 5, 0, 1, 0, 0, 156, 10},  // Relay 1 OFF
-        {1, 5, 0, 2, 0, 0, 108, 10},  // Relay 2 OFF
-        {1, 5, 0, 3, 0, 0, 61, 202},  // Relay 3 OFF
-        {1, 5, 0, 31, 0, 0, 252, 207} // Relay ALL OFF
+        {1, 5, 0, 0, 0, 0, 205, 202}, // Relay 0
+        {1, 5, 0, 1, 0, 0, 156, 10},  // Relay 1
+        {1, 5, 0, 2, 0, 0, 108, 10},  // Relay 2
+        {1, 5, 0, 3, 0, 0, 61, 202},  // Relay 3
+        {1, 5, 0, 31, 0, 0, 252, 207} // All relays
     };
-    bool state = false; // false = bật, true = tắt
+    // false = ON cycle, true = OFF cycle.
+    bool state = false;
 
     while (true)
     {
         if (!state)
         {
-            Serial.println("🟢 Đang bật từng relay...");
+            Serial.println("Starting relay ON cycle...");
             for (int i = 0; i < 4; i++)
             {
                 sendModbusCommand(relay_ON[i], sizeof(relay_ON[i]));
-                Serial.println("Bật relay " + String(i));
-                vTaskDelay(1000 / portTICK_PERIOD_MS); // Giữ 1 giây giữa mỗi lần bật
+                Serial.println("Relay ON: " + String(i));
+                vTaskDelay(1000 / portTICK_PERIOD_MS); // Keep a short pause between relays.
             }
         }
         else
         {
-            Serial.println("🔴 Đang tắt từng relay...");
+            Serial.println("Starting relay OFF cycle...");
             for (int i = 0; i < 4; i++)
             {
                 sendModbusCommand(relay_OFF[i], sizeof(relay_OFF[i]));
-                Serial.println("Tắt relay " + String(i));
-                vTaskDelay(1000 / portTICK_PERIOD_MS); // Giữ 1 giây giữa mỗi lần tắt
+                Serial.println("Relay OFF: " + String(i));
+                vTaskDelay(1000 / portTICK_PERIOD_MS); // Keep a short pause between relays.
             }
         }
 
         if (!state)
-            Serial.println("✅ Hoàn tất bật tất cả relay!");
+            Serial.println("Relay ON cycle complete.");
         else
-            Serial.println("✅ Hoàn tất tắt tất cả relay!");
+            Serial.println("Relay OFF cycle complete.");
 
-        // Đảo trạng thái cho lần kế tiếp
+        // Flip the cycle for the next pass.
         state = !state;
 
-        // Nghỉ giữa 2 chu kỳ (3 giây)
+        // Wait between cycles.
         vTaskDelay(3000 / portTICK_PERIOD_MS);
     }
 }
 
+// Start the RS485 UART and launch the sensor tasks.
 void tasksensor_init()
 {
     RS485Serial.begin(9600, SERIAL_8N1, TXD_RS485, RXD_RS485);
